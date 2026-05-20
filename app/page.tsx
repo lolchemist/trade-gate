@@ -1,11 +1,10 @@
 "use client";
 // @ts-nocheck
-
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, Mic } from "lucide-react";
 
 export default function TradeGateApp() {
   const [sleep, setSleep] = useState(7);
@@ -19,6 +18,33 @@ export default function TradeGateApp() {
   const [newsChecked, setNewsChecked] = useState(false);
   const [stopSet, setStopSet] = useState(false);
   const [revenge, setRevenge] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
+
+  const startVoiceInput = (onText) => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceStatus("Голосовой ввод не поддерживается в этом браузере. Попробуй Chrome или Safari.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "ru-RU";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setVoiceStatus("Слушаю… говори комментарий");
+    recognition.onerror = () => setVoiceStatus("Не получилось распознать голос. Попробуй ещё раз.");
+    recognition.onend = () => setTimeout(() => setVoiceStatus(""), 2500);
+
+    recognition.onresult = (event) => {
+      const text = event.results?.[0]?.[0]?.transcript || "";
+      if (text) onText(text);
+      setVoiceStatus("Комментарий добавлен голосом");
+    };
+
+    recognition.start();
+  };
 
   const [symbol, setSymbol] = useState("BCOUSD");
   const [direction, setDirection] = useState("long");
@@ -47,6 +73,13 @@ export default function TradeGateApp() {
   ]);
 
   const [archivedPlans, setArchivedPlans] = useState([]);
+  const [instrumentImages, setInstrumentImages] = useState({});
+
+  const handleInstrumentImage = (symbol, file) => {
+    if (!file) return;
+    const imageUrl = URL.createObjectURL(file);
+    setInstrumentImages((images) => ({ ...images, [symbol]: imageUrl }));
+  };
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -77,12 +110,12 @@ export default function TradeGateApp() {
     },
   ];
 
-  const addSessionPlan = () => {
+  const addSessionPlan = (symbol = "BCOUSD") => {
     setSessionPlans((plans) => [
       ...plans,
       {
         id: Date.now(),
-        symbol: "BCOUSD",
+        symbol,
         direction: "long",
         entryZone: "",
         trigger: "",
@@ -318,6 +351,12 @@ export default function TradeGateApp() {
           </div>
         </motion.div>
 
+        {voiceStatus && (
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200 shadow-xl">
+            {voiceStatus}
+          </div>
+        )}
+
         <Card className={`overflow-hidden rounded-[2rem] border shadow-2xl backdrop-blur-xl ${statusStyle}`}>
           <CardContent className="p-5">
             <div className="flex items-start gap-4">
@@ -380,89 +419,138 @@ export default function TradeGateApp() {
               </Button>
             </div>
 
-            <div className="mb-5 grid gap-3 md:grid-cols-3">
-              {marketIdeas.map((idea) => (
-                <div key={idea.symbol} className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-xl">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{idea.symbol}</div>
-                      <div className="mt-1 text-lg font-semibold text-neutral-100">{idea.title}</div>
-                    </div>
-                    <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300">
-                      Session Idea
-                    </div>
-                  </div>
+            <div className="space-y-5">
+              {marketIdeas.map((idea) => {
+                const plansForInstrument = sessionPlans.filter((p) => p.symbol === idea.symbol);
 
-                  <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300">
-                    {idea.bias}
-                  </div>
-
-                  <div className="mt-3 text-sm text-neutral-500">
-                    {idea.scenario}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-3">
-              {sessionPlans.map((item, index) => {
-                const ready = item.symbol && item.direction && item.entryZone && item.trigger && item.stop && item.take;
                 return (
-                  <div key={item.id} className={`rounded-2xl border p-4 ${ready ? "bg-emerald-50 border-emerald-200" : "bg-white"}`}>
-                    <div className="mb-3 flex items-center justify-between gap-3">
+                  <div key={idea.symbol} className="rounded-[2rem] border border-white/10 bg-black/20 p-4 shadow-xl">
+                    <div className="grid gap-4 md:grid-cols-[1fr_260px]">
                       <div>
-                        <div className="font-semibold">Сценарий {index + 1}</div>
-                        <div className="text-xs text-neutral-500">{ready ? "Готов к исполнению" : "Нужно заполнить все ключевые поля"}</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button onClick={() => archiveSessionPlan(item.id)} variant="outline" className="rounded-xl">
-                          В архив
-                        </Button>
-                        {sessionPlans.length > 1 && (
-                          <Button onClick={() => removeSessionPlan(item.id)} variant="outline" className="rounded-xl">
-                            <Trash2 className="h-4 w-4" />
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{idea.symbol}</div>
+                            <div className="mt-1 text-2xl font-semibold text-neutral-100">{idea.title}</div>
+                          </div>
+                          <Button onClick={() => addSessionPlan(idea.symbol)} variant="outline" className="rounded-xl">
+                            <Plus className="mr-2 h-4 w-4" />
+                            Сценарий
                           </Button>
+                        </div>
+
+                        <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300">
+                          {idea.bias}
+                        </div>
+
+                        <div className="mt-3 text-sm text-neutral-500">
+                          {idea.scenario}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                        <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Картинка / график</div>
+                        {instrumentImages[idea.symbol] ? (
+                          <img src={instrumentImages[idea.symbol]} alt={`chart ${idea.symbol}`} className="h-36 w-full rounded-xl object-cover" />
+                        ) : (
+                          <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/10 text-center text-xs text-neutral-600">
+                            Прикрепи скрин графика<br />для этого инструмента
+                          </div>
                         )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleInstrumentImage(idea.symbol, e.target.files?.[0])}
+                          className="mt-3 w-full text-xs text-neutral-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-neutral-100"
+                        />
                       </div>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <TextInput label="Инструмент" value={item.symbol} setValue={(v) => updateSessionPlan(item.id, "symbol", v)} />
-                      <SelectInput label="Направление" value={item.direction} setValue={(v) => updateSessionPlan(item.id, "direction", v)} options={[{ value: "long", label: "Long" }, { value: "short", label: "Short" }, { value: "both", label: "Оба сценария" }]} />
-                      <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(v) => updateSessionPlan(item.id, "entryZone", v)} />
+                    <div className="mt-4 space-y-3">
+                      {plansForInstrument.length === 0 ? (
+                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-500">
+                          Пока нет сценариев по этому инструменту. Добавь сценарий только здесь, внутри нужного инструмента.
+                        </div>
+                      ) : (
+                        plansForInstrument.map((item, index) => {
+                          const ready = item.symbol && item.direction && item.entryZone && item.trigger && item.stop && item.take;
+                          return (
+                            <div key={item.id} className={`rounded-2xl border p-4 ${ready ? "border-emerald-400/30 bg-emerald-500/10 text-neutral-100" : "border-white/10 bg-black/25 text-neutral-100"}`}>
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold">Сценарий {index + 1}</div>
+                                  <div className="text-xs text-neutral-500">{ready ? "Готов к исполнению" : "Нужно заполнить все ключевые поля"}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button onClick={() => archiveSessionPlan(item.id)} variant="outline" className="rounded-xl">
+                                    В архив
+                                  </Button>
+                                  <Button onClick={() => removeSessionPlan(item.id)} variant="outline" className="rounded-xl">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <div className="grid gap-3 md:grid-cols-3">
+                                <SelectInput label="Направление" value={item.direction} setValue={(v) => updateSessionPlan(item.id, "direction", v)} options={[{ value: "long", label: "Long" }, { value: "short", label: "Short" }, { value: "both", label: "Оба сценария" }]} />
+                                <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(v) => updateSessionPlan(item.id, "entryZone", v)} />
+                                <TextInput label="Триггер входа" value={item.trigger} setValue={(v) => updateSessionPlan(item.id, "trigger", v)} />
+                              </div>
+
+                              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <TextInput label="Стоп" value={item.stop} setValue={(v) => updateSessionPlan(item.id, "stop", v)} />
+                                <TextInput label="Тейк" value={item.take} setValue={(v) => updateSessionPlan(item.id, "take", v)} />
+                              </div>
+
+                              <label className="mt-3 block">
+                                <div className="mb-1 text-sm text-neutral-300">Комментарий / отмена сценария</div>
+                                <div className="flex gap-2">
+                                  <textarea
+                                    value={item.note}
+                                    onChange={(e) => updateSessionPlan(item.id, "note", e.target.value)}
+                                    placeholder="Например: если уровень пробит без ретеста — не вхожу; если есть резкая новость — жду 15 минут"
+                                    className="min-h-20 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                                  />
+                                  <Button
+                                    type="button"
+                                    onClick={() => startVoiceInput((text) => updateSessionPlan(item.id, "note", item.note ? `${item.note} ${text}` : text))}
+                                    variant="outline"
+                                    className="h-11 rounded-xl"
+                                  >
+                                    <Mic className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </label>
+
+                              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                <SelectInput label="Итог" value={item.resultStatus} setValue={(v) => updateSessionPlan(item.id, "resultStatus", v)} options={[{ value: "not_taken", label: "Входа не было" }, { value: "take", label: "Тейк" }, { value: "stop", label: "Стоп" }, { value: "manual_profit", label: "Ручное закрытие в плюс" }, { value: "manual_loss", label: "Ручное закрытие в минус" }, { value: "breakeven", label: "Безубыток" }]} />
+                                <SelectInput label="Техничная сделка?" value={item.technical} setValue={(v) => updateSessionPlan(item.id, "technical", v)} options={[{ value: "yes", label: "Да" }, { value: "no", label: "Нет" }, { value: "partial", label: "Частично" }]} />
+                                <NumberInput label="Финрезультат, $" value={item.finalResult} setValue={(v) => updateSessionPlan(item.id, "finalResult", v)} />
+                              </div>
+
+                              <label className="mt-3 block">
+                                <div className="mb-1 text-sm text-neutral-300">Комментарий для архива</div>
+                                <div className="flex gap-2">
+                                  <textarea
+                                    value={item.archiveComment}
+                                    onChange={(e) => updateSessionPlan(item.id, "archiveComment", e.target.value)}
+                                    placeholder="Что сработало / что нарушила / почему входа не было / что улучшить завтра"
+                                    className="min-h-20 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                                  />
+                                  <Button
+                                    type="button"
+                                    onClick={() => startVoiceInput((text) => updateSessionPlan(item.id, "archiveComment", item.archiveComment ? `${item.archiveComment} ${text}` : text))}
+                                    variant="outline"
+                                    className="h-11 rounded-xl"
+                                  >
+                                    <Mic className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </label>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
-
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
-                      <TextInput label="Триггер входа" value={item.trigger} setValue={(v) => updateSessionPlan(item.id, "trigger", v)} />
-                      <TextInput label="Стоп" value={item.stop} setValue={(v) => updateSessionPlan(item.id, "stop", v)} />
-                      <TextInput label="Тейк" value={item.take} setValue={(v) => updateSessionPlan(item.id, "take", v)} />
-                    </div>
-
-                    <label className="mt-3 block">
-                      <div className="mb-1 text-sm">Комментарий / отмена сценария</div>
-                      <textarea
-                        value={item.note}
-                        onChange={(e) => updateSessionPlan(item.id, "note", e.target.value)}
-                        placeholder="Например: если уровень пробит без ретеста — не вхожу; если есть резкая новость — жду 15 минут"
-                        className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-                      />
-                    </label>
-
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
-                      <SelectInput label="Итог" value={item.resultStatus} setValue={(v) => updateSessionPlan(item.id, "resultStatus", v)} options={[{ value: "not_taken", label: "Входа не было" }, { value: "take", label: "Тейк" }, { value: "stop", label: "Стоп" }, { value: "manual_profit", label: "Ручное закрытие в плюс" }, { value: "manual_loss", label: "Ручное закрытие в минус" }, { value: "breakeven", label: "Безубыток" }]} />
-                      <SelectInput label="Техничная сделка?" value={item.technical} setValue={(v) => updateSessionPlan(item.id, "technical", v)} options={[{ value: "yes", label: "Да" }, { value: "no", label: "Нет" }, { value: "partial", label: "Частично" }]} />
-                      <NumberInput label="Финрезультат, $" value={item.finalResult} setValue={(v) => updateSessionPlan(item.id, "finalResult", v)} />
-                    </div>
-
-                    <label className="mt-3 block">
-                      <div className="mb-1 text-sm">Комментарий для архива</div>
-                      <textarea
-                        value={item.archiveComment}
-                        onChange={(e) => updateSessionPlan(item.id, "archiveComment", e.target.value)}
-                        placeholder="Что сработало / что нарушила / почему входа не было / что улучшить завтра"
-                        className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-                      />
-                    </label>
                   </div>
                 );
               })}
@@ -593,7 +681,7 @@ function SectionTitle({ icon, title }) {
 function Slider({ label, value, setValue, min, max, suffix = "" }) {
   return (
     <label className="block">
-      <div className="mb-1 flex justify-between text-sm">
+      <div className="mb-1 flex justify-between text-sm text-neutral-300">
         <span>{label}</span>
         <span className="font-medium">{value}{suffix}</span>
       </div>
@@ -612,7 +700,7 @@ function Slider({ label, value, setValue, min, max, suffix = "" }) {
 function NumberInput({ label, value, setValue }) {
   return (
     <label className="block">
-      <div className="mb-1 text-sm">{label}</div>
+      <div className="mb-1 text-sm text-neutral-300">{label}</div>
       <input
         type="text"
         inputMode="decimal"
@@ -632,7 +720,7 @@ function NumberInput({ label, value, setValue }) {
 function TextInput({ label, value, setValue }) {
   return (
     <label className="block">
-      <div className="mb-1 text-sm">{label}</div>
+      <div className="mb-1 text-sm text-neutral-300">{label}</div>
       <input
         type="text"
         value={value}
@@ -646,7 +734,7 @@ function TextInput({ label, value, setValue }) {
 function SelectInput({ label, value, setValue, options }) {
   return (
     <label className="block">
-      <div className="mb-1 text-sm">{label}</div>
+      <div className="mb-1 text-sm text-neutral-300">{label}</div>
       <select
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -666,7 +754,7 @@ function Toggle({ label, value, setValue, danger = false }) {
       type="button"
       onClick={() => setValue(!value)}
       className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm transition ${
-        value ? (danger ? "bg-red-50 border-red-200" : "bg-neutral-900 text-white") : "bg-white"
+        value ? (danger ? "border-red-400/30 bg-red-500/10 text-red-200" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200") : "border-white/10 bg-black/30 text-neutral-200"
       }`}
     >
       <span>{label}</span>
@@ -721,3 +809,4 @@ function Warning({ text }) {
     </div>
   );
 }
+
