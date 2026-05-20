@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { Archive, ChevronDown, Trash2 } from "lucide-react";
+import { Archive, ArrowRight, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { calculateScenarioTradeMath, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
-import type { Direction, EditablePlanField, ResultStatus, SelectOption, SessionPlan, Setup, TechnicalStatus } from "./types";
+import type { CarryScenarioMode, Direction, EditablePlanField, ResultStatus, SelectOption, SessionPlan, Setup, TechnicalStatus } from "./types";
 
 const directionOptions: SelectOption<Direction>[] = [
   { value: "long", label: "Лонг" },
@@ -29,6 +29,7 @@ export function ScenarioCard({
   setups,
   onUpdate,
   onArchive,
+  onCarry,
   onRemove,
 }: {
   item: SessionPlan;
@@ -36,13 +37,16 @@ export function ScenarioCard({
   setups: Setup[];
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onArchive: (id: number) => void;
+  onCarry: (id: number, mode: CarryScenarioMode) => void;
   onRemove: (id: number) => void;
 }) {
   const ready = isPlanReady(item);
   const [open, setOpen] = useState(!ready);
+  const [carryOpen, setCarryOpen] = useState(false);
   const setupOptions = getScenarioSetupOptions(setups, item);
   const tradeMath = useMemo(() => calculateScenarioTradeMath(item), [item]);
   const quality = getQualityScore(item, tradeMath.rr, ready);
+  const stale = item.carryCount >= 5;
 
   return (
     <div className={`overflow-hidden rounded-3xl border transition ${ready ? "border-emerald-200/18 bg-emerald-200/[0.045]" : "border-white/[0.08] bg-white/[0.025]"}`}>
@@ -53,6 +57,7 @@ export function ScenarioCard({
               <StatusPill tone={ready ? "emerald" : "amber"}>{ready ? "Готов" : "Черновик"}</StatusPill>
               <StatusPill>{item.setupName || "Сетап не выбран"}</StatusPill>
               <StatusPill tone={item.direction === "long" ? "emerald" : item.direction === "short" ? "red" : "cyan"}>{directionLabel(item.direction)}</StatusPill>
+              {item.carryCount > 0 && <StatusPill tone={stale ? "amber" : "neutral"}>Переносов: {item.carryCount}</StatusPill>}
             </div>
             <div className="mt-3 text-lg font-semibold text-neutral-100">Сценарий {index + 1}</div>
             <div className="mt-1 text-sm text-neutral-500">{item.entryZone || "Зона входа не заполнена"}</div>
@@ -70,6 +75,18 @@ export function ScenarioCard({
 
       {open && (
         <div className="border-t border-white/[0.08] p-4 pt-5">
+          {stale && (
+            <div className="mb-4 rounded-2xl border border-amber-200/20 bg-amber-200/[0.07] px-4 py-3 text-sm text-amber-100">
+              Сценарий переносился несколько дней и может быть уже неактуален.
+            </div>
+          )}
+
+          {item.carriedFromDate && (
+            <div className="mb-4 rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-xs text-neutral-500">
+              Перенесён с даты {item.carriedFromDate}. Исходный сценарий: {item.originScenarioId ?? "—"}.
+            </div>
+          )}
+
           <div className="grid gap-3 md:grid-cols-3">
             <SelectInput
               label="Сетап"
@@ -133,6 +150,41 @@ export function ScenarioCard({
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="relative">
+              <Button onClick={() => setCarryOpen((value) => !value)} variant="outline" className="rounded-xl border border-sky-200/20 bg-sky-200/[0.06] text-sky-100 hover:bg-sky-200/[0.1]">
+                <ArrowRight className="mr-2 h-4 w-4" />
+                Перенести
+              </Button>
+              {carryOpen && (
+                <div className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-2xl border border-white/[0.08] bg-[#111317]/95 p-3 shadow-2xl shadow-black/35 backdrop-blur-xl">
+                  <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Перенос на завтра</div>
+                  <CarryOptionButton
+                    title="Только сценарий"
+                    detail="Сетап, уровни, триггер и заметки. Торговый расчёт будет очищен."
+                    onClick={() => {
+                      onCarry(item.id, "scenario");
+                      setCarryOpen(false);
+                    }}
+                  />
+                  <CarryOptionButton
+                    title="Сценарий + график"
+                    detail="Дополнительно скопирует изображение инструмента на следующую дату."
+                    onClick={() => {
+                      onCarry(item.id, "scenario_image");
+                      setCarryOpen(false);
+                    }}
+                  />
+                  <CarryOptionButton
+                    title="Сценарий + торговый план"
+                    detail="Сохранит расчёт сделки, риск, лотность и причину входа."
+                    onClick={() => {
+                      onCarry(item.id, "scenario_trade_plan");
+                      setCarryOpen(false);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
             <Button onClick={() => onArchive(item.id)} variant="outline" className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20">
               <Archive className="mr-2 h-4 w-4" />
               В архив
@@ -145,6 +197,15 @@ export function ScenarioCard({
         </div>
       )}
     </div>
+  );
+}
+
+function CarryOptionButton({ title, detail, onClick }: { title: string; detail: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="block w-full rounded-xl px-2 py-2 text-left transition hover:bg-white/[0.06]">
+      <div className="text-sm font-semibold text-neutral-100">{title}</div>
+      <div className="mt-1 text-xs leading-relaxed text-neutral-500">{detail}</div>
+    </button>
   );
 }
 

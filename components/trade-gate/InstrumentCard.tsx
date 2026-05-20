@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey, isPlanReady } from "./utils";
 import { MetricTile, ProgressMeter, StatusPill, TerminalPanel } from "./terminal-ui";
-import type { EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
+import type { CarryScenarioMode, EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
 
 const instrumentAccents: Record<string, { title: string; tone: "emerald" | "amber" | "cyan"; gradient: string }> = {
   BCOUSD: { title: "Энергия", tone: "emerald", gradient: "from-emerald-200/[0.09] via-transparent to-sky-100/[0.05]" },
@@ -24,6 +24,7 @@ export function InstrumentCard({
   onImageChange,
   onUpdatePlan,
   onArchivePlan,
+  onCarryPlan,
   onRemovePlan,
 }: {
   idea: MarketIdea;
@@ -37,6 +38,7 @@ export function InstrumentCard({
   onImageChange: (symbol: string, file: File | undefined) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onArchivePlan: (id: number) => void;
+  onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
 }) {
   const accent = instrumentAccents[idea.symbol] ?? instrumentAccents.BCOUSD;
@@ -112,7 +114,7 @@ export function InstrumentCard({
           </div>
         ) : (
           plans.map((item, index) => (
-            <ScenarioCard key={item.id} item={item} index={index} setups={setups} onUpdate={onUpdatePlan} onArchive={onArchivePlan} onRemove={onRemovePlan} />
+            <ScenarioCard key={item.id} item={item} index={index} setups={setups} onUpdate={onUpdatePlan} onArchive={onArchivePlan} onCarry={onCarryPlan} onRemove={onRemovePlan} />
           ))
         )}
       </div>

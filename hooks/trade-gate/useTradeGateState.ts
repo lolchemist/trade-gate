@@ -1,7 +1,7 @@
 import { useReducer } from "react";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS } from "@/constants/trade-gate";
 import { createCustomSetup, createSessionPlan, getInitialPlanDate, getPreferredSetup, getSetupName } from "@/components/trade-gate/utils";
-import type { AccountSettings, ArchivedPlan, EditablePlanField, PlanningState, SessionPlan, Setup, TradeCalculatorState } from "@/types/trade-gate";
+import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, PlanningState, SessionPlan, Setup, TradeCalculatorState } from "@/types/trade-gate";
 
 const initialPlanDate = getInitialPlanDate();
 
@@ -43,6 +43,7 @@ export type PlanningAction =
   | { type: "remove-plan"; id: number }
   | { type: "archive-plan"; id: number }
   | { type: "restore-plan"; id: number }
+  | { type: "carry-plan"; id: number; nextPlanDate: string; mode: CarryScenarioMode }
   | { type: "set-instrument-image"; key: string; value: string }
   | { type: "set-market-idea-note"; key: string; value: string }
   | { type: "set-daily-risk-budget"; planDate: string; budgetUsd: string }
@@ -52,7 +53,7 @@ export type PlanningAction =
   | { type: "add-setup"; name: string; description: string; defaultInstrument: string }
   | { type: "update-setup"; id: string; changes: Partial<Pick<Setup, "name" | "description" | "defaultInstrument" | "isActive">> }
   | { type: "delete-setup"; id: string }
-  | { type: "close-trading-day"; planDate: string; nextPlanDate: string }
+  | { type: "close-trading-day"; planDate: string; nextPlanDate: string; carryPlanIds?: number[]; carryMode?: CarryScenarioMode }
   | { type: "reset-session"; activePlanDate: string };
 
 export function planningReducer(state: PlanningState, action: PlanningAction): PlanningState {
@@ -115,6 +116,8 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         archivedPlans: state.archivedPlans.filter((plan) => plan.id !== action.id),
       };
     }
+    case "carry-plan":
+      return carryPlanToDate(state, action.id, action.nextPlanDate, action.mode);
     case "set-instrument-image":
       return { ...state, instrumentImages: { ...state.instrumentImages, [action.key]: action.value } };
     case "set-market-idea-note":
@@ -149,11 +152,28 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     case "close-trading-day": {
       const plansToArchive = state.sessionPlans.filter((plan) => plan.planDate === action.planDate);
       const remainingSessionPlans = state.sessionPlans.filter((plan) => plan.planDate !== action.planDate);
-      const nextDayAlreadyPrepared = remainingSessionPlans.some((plan) => plan.planDate === action.nextPlanDate);
+      const carryIds = new Set(action.carryPlanIds ?? []);
+      const carriedPlans = plansToArchive
+        .filter((plan) => carryIds.has(plan.id))
+        .map((plan, index) => createCarriedPlan(plan, action.nextPlanDate, action.carryMode ?? "scenario_trade_plan", Date.now() + index + 1));
+      const nextDayAlreadyPrepared = remainingSessionPlans.some((plan) => plan.planDate === action.nextPlanDate) || carriedPlans.length > 0;
+      const carriedSymbols = new Set(carriedPlans.map((plan) => plan.symbol));
 
       return {
         ...state,
         activePlanDate: action.nextPlanDate,
+        emergencyNotes: { ...state.emergencyNotes, [action.nextPlanDate]: "" },
+        emergencyLock: { revenge: false, lockUntil: "" },
+        marketIdeaNotes: plansToArchive
+          .filter((plan) => carryIds.has(plan.id))
+          .reduce(
+          (notes, plan) => copyMarketIdeaNotes(notes, action.planDate, action.nextPlanDate, plan.symbol),
+          state.marketIdeaNotes
+        ),
+        instrumentImages:
+          action.carryMode === "scenario_image"
+            ? [...carriedSymbols].reduce((images, symbol) => copyInstrumentImage(images, action.planDate, action.nextPlanDate, symbol), state.instrumentImages)
+            : state.instrumentImages,
         archivedPlans: [
           ...plansToArchive.map((plan) => ({
             ...plan,
@@ -162,7 +182,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           })),
           ...state.archivedPlans,
         ],
-        sessionPlans: nextDayAlreadyPrepared ? remainingSessionPlans : [createSessionPlan(action.nextPlanDate, "BCOUSD", Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
+        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, "BCOUSD", Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
       };
     }
     case "reset-session":
@@ -174,6 +194,65 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     default:
       return state;
   }
+}
+
+function carryPlanToDate(state: PlanningState, planId: number, nextPlanDate: string, mode: CarryScenarioMode): PlanningState {
+  const plan = state.sessionPlans.find((item) => item.id === planId);
+  if (!plan) return state;
+
+  const carriedPlan = createCarriedPlan(plan, nextPlanDate, mode);
+
+  return {
+    ...state,
+    sessionPlans: [carriedPlan, ...state.sessionPlans],
+    marketIdeaNotes: copyMarketIdeaNotes(state.marketIdeaNotes, plan.planDate, nextPlanDate, plan.symbol),
+    instrumentImages: mode === "scenario_image" ? copyInstrumentImage(state.instrumentImages, plan.planDate, nextPlanDate, plan.symbol) : state.instrumentImages,
+    emergencyNotes: { ...state.emergencyNotes, [nextPlanDate]: "" },
+  };
+}
+
+function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryScenarioMode, id = Date.now()): SessionPlan {
+  const withTradePlan = mode === "scenario_trade_plan";
+
+  return {
+    ...plan,
+    id,
+    planDate: nextPlanDate,
+    originScenarioId: plan.originScenarioId ?? plan.id,
+    carriedFromDate: plan.planDate,
+    carryCount: (Number(plan.carryCount) || 0) + 1,
+    resultStatus: "not_taken",
+    technical: "yes",
+    finalResult: "",
+    archiveComment: "",
+    tradeEntry: withTradePlan ? plan.tradeEntry : "",
+    tradeStop: withTradePlan ? plan.tradeStop : "",
+    tradeTake: withTradePlan ? plan.tradeTake : "",
+    tradeRisk: withTradePlan ? plan.tradeRisk : "",
+    tradePointValue: withTradePlan ? plan.tradePointValue : "",
+    entryReason: withTradePlan ? plan.entryReason : "",
+  };
+}
+
+function copyMarketIdeaNotes(notes: PlanningState["marketIdeaNotes"], fromDate: string, toDate: string, symbol: string) {
+  const nextNotes = { ...notes };
+
+  for (const field of ["bias", "scenario"] as const) {
+    const fromKey = `${fromDate}:${symbol}:${field}`;
+    const toKey = `${toDate}:${symbol}:${field}`;
+    if (notes[fromKey] !== undefined && nextNotes[toKey] === undefined) {
+      nextNotes[toKey] = notes[fromKey];
+    }
+  }
+
+  return nextNotes;
+}
+
+function copyInstrumentImage(images: PlanningState["instrumentImages"], fromDate: string, toDate: string, symbol: string) {
+  const fromKey = `${fromDate}:${symbol}`;
+  const toKey = `${toDate}:${symbol}`;
+  if (!images[fromKey] || images[toKey]) return images;
+  return { ...images, [toKey]: images[fromKey] };
 }
 
 

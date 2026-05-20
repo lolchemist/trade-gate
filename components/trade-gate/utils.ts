@@ -41,6 +41,9 @@ export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date
   return {
     id,
     planDate,
+    originScenarioId: undefined,
+    carriedFromDate: undefined,
+    carryCount: 0,
     setupId: selectedSetup?.id ?? "",
     setupName: selectedSetup?.name ?? "Сетап не выбран",
     symbol,

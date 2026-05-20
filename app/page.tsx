@@ -43,6 +43,7 @@ import {
 } from "@/components/trade-gate/utils";
 import type {
   ArchivedPlan,
+  CarryScenarioMode,
   EditablePlanField,
   MarketIdeaField,
   MarketIdeaNotes,
@@ -60,6 +61,24 @@ const appTabs: { id: AppTab; label: string }[] = [
   { id: "journal", label: "Журнал" },
   { id: "analytics", label: "Аналитика" },
   { id: "settings", label: "Настройки" },
+];
+
+const carryModeOptions: { id: CarryScenarioMode; title: string; detail: string }[] = [
+  {
+    id: "scenario",
+    title: "Только сценарий",
+    detail: "Перенести сетап, уровни, триггер и заметки. Расчёт сделки будет очищен.",
+  },
+  {
+    id: "scenario_image",
+    title: "Сценарий + график",
+    detail: "Дополнительно скопировать изображение инструмента на следующую дату.",
+  },
+  {
+    id: "scenario_trade_plan",
+    title: "Сценарий + торговый план",
+    detail: "Сохранить расчёт сделки, риск, стоимость пункта и причину входа.",
+  },
 ];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -81,11 +100,17 @@ export default function TradeGateApp() {
   const [consecutiveStops, setConsecutiveStops] = useState<string | number>("0");
   const [calculator, setCalculator] = useState<TradeCalculatorState>(initialCalculatorState);
   const [activeTab, setActiveTab] = useState<AppTab>("today");
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeCarryIds, setCloseCarryIds] = useState<number[]>([]);
+  const [closeCarryMode, setCloseCarryMode] = useState<CarryScenarioMode>("scenario_trade_plan");
 
   const { setups, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
   const revenge = planning.emergencyLock.revenge;
   const lockUntil = planning.emergencyLock.lockUntil;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
+  const nextPlanDate = getNextDateISO(activePlanDate);
+  const nextPlanDateLabel = formatPlanDate(nextPlanDate);
+  const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
   const activeSetups = useMemo(() => getActiveSetups(setups), [setups]);
   const activeDailyRiskBudget = useMemo(() => getDailyRiskBudget(dailyRiskBudgets, activePlanDate), [dailyRiskBudgets, activePlanDate]);
   const plannedRiskUsed = useMemo(() => calculatePlannedRisk(sessionPlans, activePlanDate), [sessionPlans, activePlanDate]);
@@ -187,19 +212,32 @@ export default function TradeGateApp() {
     setCalculator((current) => ({ ...current, [field]: value }));
   };
 
-  const closeTradingDay = () => {
-    const plansForDate = sessionPlans.filter((item) => item.planDate === activePlanDate);
-    if (plansForDate.length === 0) {
+  const carryScenario = (id: number, mode: CarryScenarioMode) => {
+    const action: PlanningAction = { type: "carry-plan", id, nextPlanDate, mode };
+    dispatchPlanning(action);
+    setSyncStatus(`Сценарий перенесён на ${nextPlanDateLabel}`);
+  };
+
+  const openCloseTradingDayDialog = () => {
+    if (activePlansForDate.length === 0) {
       setSyncStatus("На выбранную дату нет сценариев для закрытия дня");
       return;
     }
 
-    const confirmed = window.confirm("Закрыть торговый день? Все сценарии выбранной даты будут перенесены в архив, а план переключится на следующий день.");
-    if (!confirmed) return;
+    setCloseCarryIds(activePlansForDate.map((planItem) => planItem.id));
+    setCloseCarryMode("scenario_trade_plan");
+    setCloseDialogOpen(true);
+  };
 
-    const action: PlanningAction = { type: "close-trading-day", planDate: activePlanDate, nextPlanDate: getNextDateISO(activePlanDate) };
+  const closeTradingDay = () => {
+    const action: PlanningAction = { type: "close-trading-day", planDate: activePlanDate, nextPlanDate, carryPlanIds: closeCarryIds, carryMode: closeCarryMode };
     const nextPlanning = planningReducer(planning, action);
     dispatchPlanning(action);
+    setCloseDialogOpen(false);
+    setDailyPnl(0);
+    setTradesToday(0);
+    setDailyLoss("0");
+    setConsecutiveStops("0");
     storage
       .save(nextPlanning)
       .then((result) => {
@@ -417,6 +455,7 @@ export default function TradeGateApp() {
                       onImageChange={handleInstrumentImage}
                       onUpdatePlan={updateSessionPlan}
                       onArchivePlan={(id) => dispatchPlanning({ type: "archive-plan", id })}
+                      onCarryPlan={carryScenario}
                       onRemovePlan={(id) => dispatchPlanning({ type: "remove-plan", id })}
                     />
                   ))}
@@ -437,7 +476,7 @@ export default function TradeGateApp() {
               <CardContent className="space-y-4 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Журнал: ${activePlanDateLabel}`} />
-                  <Button onClick={closeTradingDay} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+                  <Button onClick={openCloseTradingDayDialog} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
                     Закрыть торговый день
                   </Button>
                 </div>
@@ -568,6 +607,90 @@ export default function TradeGateApp() {
           </div>
         )}
       </div>
+
+      {closeDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-3 backdrop-blur-sm md:items-center md:p-6">
+          <div className="w-full max-w-3xl rounded-[1.75rem] border border-white/[0.08] bg-[#101215]/95 p-5 shadow-2xl shadow-black/40">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-neutral-500">Закрытие дня</div>
+                <div className="mt-1 text-xl font-semibold text-neutral-100">Перенос сценариев на {nextPlanDateLabel}</div>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
+                  Все сценарии текущей даты будут отправлены в архив. Отмеченные сценарии дополнительно появятся в плане следующего дня.
+                </p>
+              </div>
+              <Button onClick={() => setCloseDialogOpen(false)} variant="outline" className="rounded-xl border border-white/10 bg-black/30 text-neutral-200 hover:bg-white/10">
+                Закрыть
+              </Button>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
+              <div className="space-y-2">
+                {activePlansForDate.map((item) => {
+                  const checked = closeCarryIds.includes(item.id);
+                  return (
+                    <label
+                      key={item.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
+                        checked ? "border-emerald-200/20 bg-emerald-200/[0.06]" : "border-white/[0.08] bg-white/[0.025]"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) =>
+                          setCloseCarryIds((current) => (event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id)))
+                        }
+                        className="mt-1 h-4 w-4 accent-emerald-300"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-neutral-100">
+                          {item.symbol} · {item.setupName || "Сетап не выбран"}
+                        </span>
+                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || item.trigger || "Зона входа не заполнена"}</span>
+                        {item.carryCount >= 5 && <span className="mt-2 block text-xs text-amber-100">Сценарий переносился несколько дней и может быть уже неактуален.</span>}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-3">
+                <div className="px-1 pb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Что переносить</div>
+                <div className="space-y-2">
+                  {carryModeOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setCloseCarryMode(option.id)}
+                      className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                        closeCarryMode === option.id ? "border-emerald-200/20 bg-emerald-200/[0.07]" : "border-white/[0.08] bg-white/[0.025] hover:bg-white/[0.05]"
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold text-neutral-100">{option.title}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-neutral-500">{option.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
+              <div className="text-sm text-neutral-500">
+                К переносу выбрано: <span className="font-semibold text-neutral-200">{closeCarryIds.length}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => setCloseCarryIds([])} variant="outline" className="rounded-xl border border-white/10 bg-black/30 text-neutral-200 hover:bg-white/10">
+                  Не переносить
+                </Button>
+                <Button onClick={closeTradingDay} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20">
+                  Архивировать и перейти дальше
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,9 +22,14 @@ export type MarketIdeaField = "bias" | "scenario";
 
 export type MarketIdeaNotes = Record<string, string>;
 
+export type CarryScenarioMode = "scenario" | "scenario_image" | "scenario_trade_plan";
+
 export interface SessionPlan {
   id: number;
   planDate: string;
+  originScenarioId?: number;
+  carriedFromDate?: string;
+  carryCount: number;
   setupId: string;
   setupName: string;
   symbol: string;

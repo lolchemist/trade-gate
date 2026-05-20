@@ -276,6 +276,7 @@ function normalizeSessionPlans(plans: SessionPlan[] | undefined, fallbackDate: s
   return plans.map((plan, index) => ({
     ...createSessionPlan(plan.planDate ?? fallbackDate, plan.symbol || "BCOUSD", plan.id ?? Date.now() + index),
     ...plan,
+    carryCount: Number(plan.carryCount) || 0,
     setupId: plan.setupId || "oil-impulse-retest",
     setupName: plan.setupName || setups.find((setup) => setup.id === plan.setupId)?.name || DEFAULT_SETUPS.find((setup) => setup.id === plan.setupId)?.name || "Импульс по нефти + ретест",
     planDate: plan.planDate ?? fallbackDate,
@@ -289,6 +290,7 @@ function normalizeArchivedPlans(plans: ArchivedPlan[] | undefined, fallbackDate:
   return plans.map((plan, index) => ({
     ...createSessionPlan(plan.planDate ?? fallbackDate, plan.symbol || "BCOUSD", plan.id ?? Date.now() + index),
     ...plan,
+    carryCount: Number(plan.carryCount) || 0,
     setupId: plan.setupId || "oil-impulse-retest",
     setupName: plan.setupName || setups.find((setup) => setup.id === plan.setupId)?.name || DEFAULT_SETUPS.find((setup) => setup.id === plan.setupId)?.name || "Импульс по нефти + ретест",
     archivedAt: plan.archivedAt ?? "",

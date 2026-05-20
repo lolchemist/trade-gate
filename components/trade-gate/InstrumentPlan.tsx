@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey } from "./utils";
-import type { EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
+import type { CarryScenarioMode, EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
 
 export function InstrumentPlan({
   idea,
@@ -17,6 +17,7 @@ export function InstrumentPlan({
   onImageChange,
   onUpdatePlan,
   onArchivePlan,
+  onCarryPlan,
   onRemovePlan,
 }: {
   idea: MarketIdea;
@@ -30,6 +31,7 @@ export function InstrumentPlan({
   onImageChange: (symbol: string, file: File | undefined) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onArchivePlan: (id: number) => void;
+  onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
 }) {
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
@@ -104,6 +106,7 @@ export function InstrumentPlan({
               setups={setups}
               onUpdate={onUpdatePlan}
               onArchive={onArchivePlan}
+              onCarry={onCarryPlan}
               onRemove={onRemovePlan}
             />
           ))
