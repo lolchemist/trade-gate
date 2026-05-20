@@ -46,7 +46,7 @@ export default function TradeGateApp() {
     },
   ]);
 
-  const [archivedPlans, setArchivedPlans] = useState([]);
+  const [archivedPlans, setArchivedPlans] = useState<any[]>([]);
 
   const addSessionPlan = () => {
     setSessionPlans((plans) => [
