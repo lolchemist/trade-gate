@@ -27,6 +27,9 @@ export default function TradeGateApp() {
   const [newsChecked, setNewsChecked] = useState(false);
   const [stopSet, setStopSet] = useState(false);
   const [revenge, setRevenge] = useState(false);
+  const [dailyLoss, setDailyLoss] = useState("0");
+  const [consecutiveStops, setConsecutiveStops] = useState("0");
+  const [lockUntil, setLockUntil] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
   const [syncKey, setSyncKey] = useState("nataliia-main");
   const [syncStatus, setSyncStatus] = useState("");
@@ -97,6 +100,7 @@ export default function TradeGateApp() {
       tradeTake: "",
       tradeRisk: "500",
       tradePointValue: "1000",
+      entryReason: "",
     },
   ]);
 
@@ -339,68 +343,159 @@ export default function TradeGateApp() {
 
   const result = useMemo(() => {
     let riskScore = 0;
-    let reasons = [];
+    const reasons = [];
+    const warnings = [];
+
+    const readiness = {
+      execution: 100,
+      emotional: 100,
+      discipline: 100,
+    };
+
+    const now = new Date();
+    const isLocked = lockUntil && new Date(lockUntil) > now;
+    const dailyPnlNumber = Number(dailyPnl);
+    const dailyLossNumber = Number(dailyLoss);
+    const stopsNumber = Number(consecutiveStops);
+
+    if (isLocked) {
+      riskScore += 100;
+      readiness.execution = 0;
+      readiness.emotional = 0;
+      readiness.discipline = 0;
+      reasons.push(`торговля заблокирована до ${new Date(lockUntil).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`);
+    }
 
     if (sleep < 6) {
       riskScore += 3;
-      reasons.push("мало сна");
-    }
-    if (anxiety >= 7) {
-      riskScore += 3;
-      reasons.push("высокая тревога");
-    }
-    if (urge >= 7) {
-      riskScore += 4;
-      reasons.push("сильное желание срочно торговать");
-    }
-    if (anger >= 6) {
-      riskScore += 3;
-      reasons.push("злость / раздражение");
-    }
-    if (dailyPnl <= lossLimit) {
-      riskScore += 10;
-      reasons.push("дневной лимит убытка достигнут");
-    }
-    if (tradesToday >= 3) {
-      riskScore += 3;
-      reasons.push("слишком много сделок за день");
-    }
-    if (!plan) {
-      riskScore += 3;
-      reasons.push("нет торгового плана");
-    }
-    if (!newsChecked) {
-      riskScore += 2;
-      reasons.push("новости не проверены");
-    }
-    if (!stopSet) {
-      riskScore += 5;
-      reasons.push("стоп не определён заранее");
-    }
-    if (revenge) {
-      riskScore += 8;
-      reasons.push("есть желание отбиться");
-    }
-    if (!tradeMath.valid) {
-      riskScore += 5;
-      reasons.push("план сделки заполнен некорректно");
-    }
-    if (sessionPlanReadyCount === 0) {
-      riskScore += 3;
-      reasons.push("нет готового плана следующей сессии");
-    }
-    if (tradeMath.rr > 0 && tradeMath.rr < 1.5) {
-      riskScore += 2;
-      reasons.push("слабое соотношение риск/прибыль");
+      readiness.emotional -= 15;
+      reasons.push("мало сна: ниже 6 часов");
     }
 
-    if (dailyPnl <= lossLimit || revenge || !stopSet || !tradeMath.valid) {
+    if (anxiety >= 7) {
+      riskScore += 3;
+      readiness.emotional -= 20;
+      reasons.push("высокая тревога: 7/10 или выше");
+    }
+
+    if (urge >= 7) {
+      riskScore += 4;
+      readiness.emotional -= 25;
+      reasons.push("сильное желание срочно торговать: риск импульсного входа");
+    }
+
+    if (anger >= 6) {
+      riskScore += 3;
+      readiness.emotional -= 20;
+      reasons.push("злость / раздражение: риск revenge trading");
+    }
+
+    if (dailyPnlNumber <= lossLimit) {
+      riskScore += 50;
+      readiness.discipline -= 50;
+      reasons.push("дневной лимит убытка достигнут по PnL");
+    }
+
+    if (dailyLossNumber <= -1000) {
+      riskScore += 50;
+      readiness.discipline -= 50;
+      reasons.push("дневной убыток ниже -1000$: торговля должна быть остановлена");
+    }
+
+    if (tradesToday >= 3) {
+      riskScore += 3;
+      readiness.discipline -= 15;
+      reasons.push("слишком много сделок за день: 3 или больше");
+    }
+
+    if (stopsNumber >= 3) {
+      riskScore += 30;
+      readiness.emotional -= 35;
+      readiness.discipline -= 25;
+      reasons.push("3 стопа подряд: высокий риск revenge trading");
+    }
+
+    if (!plan) {
+      riskScore += 3;
+      readiness.execution -= 20;
+      reasons.push("переключатель ‘Есть чёткий план сделки’ выключен");
+    }
+
+    if (!newsChecked) {
+      riskScore += 2;
+      readiness.execution -= 10;
+      reasons.push("переключатель ‘Новости проверены’ выключен");
+    }
+
+    if (!stopSet) {
+      riskScore += 5;
+      readiness.discipline -= 25;
+      reasons.push("переключатель ‘Стоп заранее определён’ выключен");
+    }
+
+    if (revenge) {
+      riskScore += 80;
+      readiness.emotional = Math.min(readiness.emotional, 10);
+      readiness.discipline = Math.min(readiness.discipline, 20);
+      reasons.push("включено ‘Есть желание отбиться’ — жёсткая блокировка");
+    }
+
+    if (!tradeMath.valid) {
+      riskScore += 5;
+      readiness.execution -= 20;
+      if (!entryReason || entryReason.trim().length <= 8) reasons.push("в плане конкретной сделки нет нормальной причины входа");
+      if (!tradeMath.stopValid) reasons.push("стоп в плане конкретной сделки стоит с неправильной стороны");
+      if (!tradeMath.takeValid) reasons.push("тейк в плане конкретной сделки стоит с неправильной стороны");
+      if (tradeMath.stopDistance <= 0) reasons.push("не заполнена дистанция до стопа в плане конкретной сделки");
+      if (tradeMath.takeDistance <= 0) reasons.push("не заполнена дистанция до тейка в плане конкретной сделки");
+    }
+
+    if (sessionPlanReadyCount === 0) {
+      riskScore += 3;
+      readiness.execution -= 25;
+      reasons.push(`нет готового сценария на дату ${activePlanDateLabel}`);
+    }
+
+    if (tradeMath.rr > 0 && tradeMath.rr < 1.5) {
+      riskScore += 2;
+      readiness.execution -= 10;
+      warnings.push("R:R ниже 1:1.5 — сделка может быть невыгодной по математике");
+    }
+
+    const revengeDetectorScore = Math.min(
+      100,
+      (revenge ? 45 : 0) +
+        (urge >= 7 ? 20 : 0) +
+        (anger >= 6 ? 15 : 0) +
+        (stopsNumber >= 2 ? 15 : 0) +
+        (dailyPnlNumber < 0 ? 10 : 0) +
+        (tradesToday >= 3 ? 15 : 0)
+    );
+
+    if (revengeDetectorScore >= 60) {
+      reasons.push("Revenge detector: состояние похоже на попытку отбиться, а не на спокойное исполнение плана");
+      readiness.emotional = Math.min(readiness.emotional, 25);
+    } else if (revengeDetectorScore >= 35) {
+      warnings.push("Revenge detector: есть признаки эмоционального давления, снизь риск");
+      readiness.emotional = Math.min(readiness.emotional, 60);
+    }
+
+    readiness.execution = Math.max(0, Math.min(100, Math.round(readiness.execution)));
+    readiness.emotional = Math.max(0, Math.min(100, Math.round(readiness.emotional)));
+    readiness.discipline = Math.max(0, Math.min(100, Math.round(readiness.discipline)));
+
+    const hardLock = isLocked || dailyPnlNumber <= lossLimit || dailyLossNumber <= -1000 || revenge || !stopSet || !tradeMath.valid || stopsNumber >= 3;
+
+    if (hardLock) {
       return {
         status: "LOCKED",
         title: "Торговать нельзя",
-        subtitle: "Терминал должен быть закрыт. Только наблюдение.",
+        subtitle: "Есть жёсткий блокирующий фактор. Только наблюдение или разбор.",
         risk: riskScore,
         reasons,
+        warnings,
+        readiness,
+        revengeDetectorScore,
       };
     }
 
@@ -411,6 +506,9 @@ export default function TradeGateApp() {
         subtitle: "Состояние нестабильное. Высокий риск сорваться в импульс.",
         risk: riskScore,
         reasons,
+        warnings,
+        readiness,
+        revengeDetectorScore,
       };
     }
 
@@ -421,6 +519,9 @@ export default function TradeGateApp() {
         subtitle: "Одна сделка, риск 0.25%, без добора и без повторного входа.",
         risk: riskScore,
         reasons,
+        warnings,
+        readiness,
+        revengeDetectorScore,
       };
     }
 
@@ -430,8 +531,11 @@ export default function TradeGateApp() {
       subtitle: "Только по плану, с заранее заданным стопом и лимитом дня.",
       risk: riskScore,
       reasons,
+      warnings,
+      readiness,
+      revengeDetectorScore,
     };
-  }, [sleep, anxiety, urge, anger, dailyPnl, lossLimit, tradesToday, plan, newsChecked, stopSet, revenge, tradeMath, sessionPlanReadyCount]);
+  }, [sleep, anxiety, urge, anger, dailyPnl, dailyLoss, consecutiveStops, lockUntil, lossLimit, tradesToday, plan, newsChecked, stopSet, revenge, tradeMath, sessionPlanReadyCount, activePlanDateLabel]);
 
   const statusStyle = {
     OK: "bg-emerald-500/10 border-emerald-400/30 text-emerald-200 shadow-emerald-500/10",
@@ -545,11 +649,37 @@ export default function TradeGateApp() {
                   </div>
                   <div className="font-mono text-sm text-neutral-200">{result.risk}</div>
                 </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <ReadinessCard title="Execution" value={result.readiness?.execution ?? 0} />
+                  <ReadinessCard title="Emotional" value={result.readiness?.emotional ?? 0} />
+                  <ReadinessCard title="Discipline" value={result.readiness?.discipline ?? 0} />
+                  <ReadinessCard title="Revenge Risk" value={result.revengeDetectorScore ?? 0} inverse />
+                </div>
+
+                {result.warnings?.length > 0 && (
+                  <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-300/80">Предупреждения</div>
+                    <div className="space-y-2">
+                      {result.warnings.map((w) => (
+                        <div key={w}>• {w}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {result.reasons.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {result.reasons.map((r) => (
-                      <span key={r} className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-neutral-200 shadow-sm">{r}</span>
-                    ))}
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+                    <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                      Почему такой статус
+                    </div>
+                    <div className="space-y-2">
+                      {result.reasons.map((r) => (
+                        <div key={r} className="flex items-start gap-2 text-sm text-neutral-200">
+                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                          <span>{r}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -572,11 +702,35 @@ export default function TradeGateApp() {
             <CardContent className="space-y-4 p-5">
               <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
               <NumberInput label="PnL за день, $" value={dailyPnl} setValue={setDailyPnl} />
+              <NumberInput label="Дневной убыток, $" value={dailyLoss} setValue={setDailyLoss} />
               <NumberInput label="Сделок сегодня" value={tradesToday} setValue={setTradesToday} />
+              <NumberInput label="Стопов подряд" value={consecutiveStops} setValue={setConsecutiveStops} />
               <Toggle label="Есть чёткий план сделки" value={plan} setValue={setPlan} />
               <Toggle label="Новости проверены" value={newsChecked} setValue={setNewsChecked} />
               <Toggle label="Стоп заранее определён" value={stopSet} setValue={setStopSet} />
               <Toggle label="Есть желание отбиться" value={revenge} setValue={setRevenge} danger />
+              <div className="grid gap-2 md:grid-cols-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const until = new Date();
+                    until.setHours(until.getHours() + 2);
+                    setLockUntil(until.toISOString());
+                  }}
+                  variant="outline"
+                  className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                >
+                  Lock 2h
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setLockUntil("")}
+                  variant="outline"
+                  className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                >
+                  Unlock
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -858,6 +1012,24 @@ export default function TradeGateApp() {
         <div className="flex justify-end">
           <Button onClick={reset} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">Сбросить проверку</Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReadinessCard({ title, value, inverse = false }) {
+  const normalized = Math.max(0, Math.min(100, Number(value) || 0));
+  const label = inverse ? `${normalized}%` : `${normalized}%`;
+  const barWidth = `${normalized}%`;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+      <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{title}</div>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+          <div className={`h-full rounded-full ${inverse ? "bg-red-300" : "bg-emerald-300"}`} style={{ width: barWidth }} />
+        </div>
+        <div className="font-mono text-sm text-neutral-200">{label}</div>
       </div>
     </div>
   );
