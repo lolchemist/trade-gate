@@ -29,17 +29,17 @@ export function SetupPlaybookCard({
   };
 
   return (
-    <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+    <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
       <CardContent className="space-y-4 p-5">
         <SectionTitle icon={<BookOpen className="h-4 w-4" />} title="Плейбук сетапов" />
 
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
           <div className="grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]">
             <TextInput label="Новый сетап" value={newName} setValue={setNewName} />
             <TextInput label="Описание" value={newDescription} setValue={setNewDescription} />
             <TextInput label="Инструмент по умолчанию" value={newDefaultInstrument} setValue={(value) => setNewDefaultInstrument(value.toUpperCase())} />
             <div className="flex items-end">
-              <Button onClick={addSetup} variant="outline" className="w-full rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+              <Button onClick={addSetup} variant="outline" className="w-full rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]">
                 <Plus className="mr-2 h-4 w-4" />
                 Добавить
               </Button>
@@ -49,7 +49,7 @@ export function SetupPlaybookCard({
 
         <div className="space-y-3">
           {setups.map((setup) => (
-            <div key={setup.id} className={`rounded-2xl border p-4 ${setup.isActive ? "border-white/10 bg-black/25" : "border-white/5 bg-black/10 opacity-70"}`}>
+            <div key={setup.id} className={`rounded-2xl border p-4 ${setup.isActive ? "border-white/[0.08] bg-white/[0.03]" : "border-white/[0.05] bg-black/10 opacity-70"}`}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-neutral-100">{setup.name || "Без названия"}</div>
@@ -61,12 +61,12 @@ export function SetupPlaybookCard({
                   <Button
                     onClick={() => onUpdate(setup.id, { isActive: !setup.isActive })}
                     variant="outline"
-                    className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                    className="rounded-xl border border-white/[0.08] bg-black/20 text-neutral-100 hover:bg-white/[0.06]"
                   >
                     {setup.isActive ? "Скрыть" : "Показать"}
                   </Button>
                   {!setup.isDefault && (
-                    <Button onClick={() => onDelete(setup.id)} variant="outline" className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20">
+                    <Button onClick={() => onDelete(setup.id)} variant="outline" className="rounded-xl border border-rose-200/20 bg-rose-200/[0.06] text-rose-100 hover:bg-rose-200/[0.1]">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   )}

@@ -1,6 +1,6 @@
 import { Landmark } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { NumberInput, SectionTitle } from "./form-controls";
+import { NumberInput } from "./form-controls";
+import { PanelHeader, TerminalPanel } from "./terminal-ui";
 import { formatCurrency } from "./utils";
 import type { AccountSettings } from "./types";
 
@@ -23,9 +23,9 @@ export function AccountSettingsCard({
   const profitTarget = Number(settings.profitTarget) || 0;
 
   return (
-    <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-      <CardContent className="space-y-4 p-5">
-        <SectionTitle icon={<Landmark className="h-4 w-4" />} title="Правила проп-аккаунта" />
+    <TerminalPanel className="p-5" glow="neutral">
+      <div className="space-y-4">
+        <PanelHeader eyebrow="Настройки аккаунта" title="Правила проп-аккаунта" meta={<Landmark className="h-5 w-5 text-neutral-500" />} />
         <div className="grid gap-3 md:grid-cols-3">
           <NumberInput label="Размер аккаунта, $" value={settings.accountSize} setValue={(value) => onChange("accountSize", value)} />
           <NumberInput label="Дневной лимит проп-фирмы, $" value={settings.propDailyLossLimit} setValue={(value) => onChange("propDailyLossLimit", value)} />
@@ -40,8 +40,8 @@ export function AccountSettingsCard({
           <ProgressRow title="До максимального убытка" used={totalLossUsed} limit={maxLossLimit} />
           <ProgressRow title="Прогресс к цели прибыли" used={profitProgress} limit={profitTarget} positive />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </TerminalPanel>
   );
 }
 
@@ -57,7 +57,7 @@ function ProgressRow({ title, used, limit, positive = false }: { title: string; 
         </span>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-        <div className={`h-full rounded-full ${positive ? "bg-emerald-300" : percent >= 80 ? "bg-red-300" : "bg-amber-300"}`} style={{ width: `${percent}%` }} />
+        <div className={`h-full rounded-full ${positive ? "bg-emerald-200/80" : percent >= 80 ? "bg-rose-200/75" : "bg-amber-100/75"}`} style={{ width: `${percent}%` }} />
       </div>
     </div>
   );

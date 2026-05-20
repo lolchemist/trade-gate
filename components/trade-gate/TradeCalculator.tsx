@@ -18,7 +18,7 @@ export function TradeCalculator({
   onChange: <K extends TradeCalculatorField>(field: K, value: TradeCalculatorState[K]) => void;
 }) {
   return (
-    <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+    <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
       <CardContent className="space-y-4 p-5">
         <SectionTitle icon={<Calculator className="h-4 w-4" />} title="План конкретной сделки и расчёт лота" />
 
@@ -34,7 +34,7 @@ export function TradeCalculator({
             value={calculator.entryReason}
             onChange={(event) => onChange("entryReason", event.target.value)}
             placeholder="Например: ретест уровня, импульс, подтверждение объёмом, стоп за локальный экстремум"
-            className="min-h-24 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+            className="min-h-24 w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-200/20"
           />
         </label>
 

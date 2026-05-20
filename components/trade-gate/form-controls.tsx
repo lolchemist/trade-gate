@@ -145,7 +145,7 @@ export function Toggle({
       className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm transition ${
         value
           ? danger
-            ? "border-red-400/30 bg-red-500/10 text-red-200"
+            ? "border-rose-200/20 bg-rose-200/[0.07] text-rose-100"
             : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
           : "border-white/10 bg-black/30 text-neutral-200"
       }`}
@@ -166,7 +166,7 @@ export function Rule({ title, value }: { title: string; value: string }) {
 }
 
 export function Warning({ text }: { text: string }) {
-  return <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{text}</div>;
+  return <div className="rounded-xl border border-rose-200/20 bg-rose-200/[0.07] px-3 py-2 text-sm text-rose-100">{text}</div>;
 }
 
 export function ArchiveField({ title, value }: { title: string; value: string }) {

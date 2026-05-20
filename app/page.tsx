@@ -6,12 +6,16 @@ import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Shield, Timer, Tre
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard";
+import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
-import { DailyRiskBudgetCard } from "@/components/trade-gate/DailyRiskBudgetCard";
-import { EmergencyCard } from "@/components/trade-gate/EmergencyCard";
-import { InstrumentPlan } from "@/components/trade-gate/InstrumentPlan";
+import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
+import { HeroStatus } from "@/components/trade-gate/HeroStatus";
+import { InstrumentCard } from "@/components/trade-gate/InstrumentCard";
+import { LockOverlay } from "@/components/trade-gate/LockOverlay";
 import { PermissionCard } from "@/components/trade-gate/PermissionCard";
-import { RiskStatus } from "@/components/trade-gate/RiskStatus";
+import { PropRulesCard } from "@/components/trade-gate/PropRulesCard";
+import { ReadinessDashboard } from "@/components/trade-gate/ReadinessDashboard";
+import { RiskBudgetCard } from "@/components/trade-gate/RiskBudgetCard";
 import { SetupPlaybookCard } from "@/components/trade-gate/SetupPlaybookCard";
 import { TradeCalculator } from "@/components/trade-gate/TradeCalculator";
 import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
@@ -26,7 +30,6 @@ import {
   calculatePermission,
   calculatePlannedRisk,
   calculateTradeMath,
-  formatCurrency,
   formatPlanDate,
   formatSyncStatus,
   getActiveSetups,
@@ -91,6 +94,8 @@ export default function TradeGateApp() {
   const personalDailyStopLimit = Number(accountSettings.personalDailyStop) || 0;
   const personalDailyStopHit = personalDailyStopLimit > 0 && (Number(dailyPnl) <= -personalDailyStopLimit || Number(dailyLoss) <= -personalDailyStopLimit);
   const propDailyLossUsed = Math.max(Math.abs(Math.min(Number(dailyPnl) || 0, Number(dailyLoss) || 0, 0)), 0);
+  const totalLossUsed = Math.max(propDailyLossUsed, Number(accountSettings.personalMaxLoss) > 0 ? propDailyLossUsed : 0);
+  const profitProgress = Math.max(0, Number(dailyPnl) || 0);
   const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;
   const propDailyLossClose = propDailyLossLimit > 0 && propDailyLossUsed >= propDailyLossLimit * 0.8;
   const { isHydrated, syncStatus, setSyncStatus, saveNow, loadFromCloud } = useSupabaseSync({
@@ -131,6 +136,7 @@ export default function TradeGateApp() {
   });
 
   const { weeklyReport, analyticsStats } = useWeeklyReport(archivedPlans, activePlanDate, emergencyNotes);
+  const isLocked = riskResult.status === "LOCKED";
   const permission = useMemo(
     () =>
       calculatePermission({
@@ -233,7 +239,7 @@ export default function TradeGateApp() {
   if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#07080b] p-4 text-neutral-100">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-neutral-400 shadow-2xl backdrop-blur-xl">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-5 py-4 text-sm text-neutral-400 shadow-xl shadow-black/15 backdrop-blur-xl">
           Trade Gate загружается…
         </div>
       </div>
@@ -241,31 +247,32 @@ export default function TradeGateApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07080b] p-4 text-neutral-100">
+    <div className="min-h-screen bg-[#090a0c] px-3 py-5 text-neutral-100 md:px-6 md:py-7">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-24 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="absolute left-0 top-1/3 h-80 w-80 rounded-full bg-red-500/10 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.10),transparent_34%),radial-gradient(circle_at_82%_10%,rgba(245,158,11,0.055),transparent_30%),linear-gradient(180deg,#0b0c0f_0%,#08090b_48%,#060608_100%)]" />
+        <div className="absolute -top-32 left-1/2 h-[30rem] w-[30rem] -translate-x-1/2 rounded-full bg-emerald-100/[0.055] blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-sky-100/[0.04] blur-3xl" />
+        <div className="absolute left-0 top-1/3 h-96 w-96 rounded-full bg-rose-100/[0.035] blur-3xl" />
       </div>
 
-      <div className="relative mx-auto max-w-5xl space-y-5">
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-end justify-between gap-4">
+      <div className="relative mx-auto max-w-7xl space-y-6">
+        <motion.header initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-[1.75rem] border border-white/[0.08] bg-white/[0.045] p-4 shadow-xl shadow-black/20 backdrop-blur-2xl md:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <div className="mb-2 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-emerald-300/80 shadow-2xl backdrop-blur">
-                Система риск-контроля
+              <div className="mb-3 inline-flex rounded-full border border-emerald-200/15 bg-emerald-200/[0.07] px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.28em] text-emerald-100/85 shadow-sm backdrop-blur">
+                Поведенческий риск-терминал
               </div>
-              <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Trade Gate</h1>
-              <p className="mt-2 text-sm text-neutral-400">Личный терминал допуска к сделке: состояние · риск · план · дисциплина.</p>
+              <h1 className="text-3xl font-semibold uppercase tracking-[-0.035em] md:text-5xl">Trade Gate</h1>
+              <p className="mt-2 text-sm leading-relaxed text-neutral-500">Спокойная операционная система допуска к сделке: риск · поведение · план · дисциплина.</p>
             </div>
-            <div className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right shadow-2xl backdrop-blur md:block">
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Режим аккаунта</div>
-              <div className="mt-1 text-lg font-semibold text-neutral-100">Челлендж 100K</div>
+            <div className="hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-right shadow-inner shadow-black/15 md:block">
+              <div className="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">Режим аккаунта</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-neutral-100">Проп-челлендж $100K</div>
             </div>
           </div>
 
-          <div className="mt-5 overflow-x-auto pb-1">
-            <div className="flex min-w-max gap-2 rounded-2xl border border-white/10 bg-black/25 p-1 shadow-xl backdrop-blur">
+          <div className="mt-4 overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2 rounded-2xl border border-white/[0.08] bg-black/20 p-1 shadow-inner shadow-black/20 backdrop-blur">
               {appTabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -273,8 +280,8 @@ export default function TradeGateApp() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                     activeTab === tab.id
-                      ? "border border-emerald-400/30 bg-emerald-500/15 text-emerald-100 shadow-lg shadow-emerald-950/20"
-                      : "border border-transparent text-neutral-400 hover:bg-white/5 hover:text-neutral-100"
+                      ? "border border-emerald-400/30 bg-emerald-500/15 text-emerald-100 shadow-lg shadow-emerald-950/30"
+                      : "border border-transparent text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-100"
                   }`}
                 >
                   {tab.label}
@@ -282,85 +289,99 @@ export default function TradeGateApp() {
               ))}
             </div>
           </div>
-          <div className="mt-3 inline-flex rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <div className="mt-3 inline-flex rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
             Синхронизация: {formatSyncStatus(syncStatus)}
           </div>
-        </motion.div>
+        </motion.header>
 
         {activeTab === "today" && (
-          <div className="space-y-5">
-            <RiskStatus result={riskResult} />
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            <HeroStatus result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
+            <LockOverlay result={riskResult} lockUntil={lockUntil} />
 
-            <PermissionCard permission={permission} />
+            <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked ? "opacity-80" : ""}`}>
+              <div className="space-y-5">
+                <PermissionCard permission={permission} />
+                <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />
+                <RiskBudgetCard
+                  budgetUsd={activeDailyRiskBudget.budgetUsd}
+                  plannedRiskUsed={plannedRiskUsed}
+                  remainingRisk={dailyRiskRemaining}
+                  onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
+                />
+              </div>
 
-            <EmergencyCard
-              note={emergencyNote}
-              onNoteChange={(value) => dispatchPlanning({ type: "set-emergency-note", planDate: activePlanDate, value })}
-              onEmergency={triggerEmergencyLock}
-            />
+              <div className="space-y-5">
+                <PropRulesCard settings={accountSettings} dailyLossUsed={propDailyLossUsed} totalLossUsed={totalLossUsed} profitProgress={profitProgress} compact />
+                <EmergencyPanel
+                  note={emergencyNote}
+                  onNoteChange={(value) => dispatchPlanning({ type: "set-emergency-note", planDate: activePlanDate, value })}
+                  onEmergency={triggerEmergencyLock}
+                />
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-                <CardContent className="space-y-4 p-5">
-                  <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
-                  <Slider label="Сон, часов" value={sleep} setValue={setSleep} min={0} max={10} suffix="ч" />
-                  <Slider label="Тревога" value={anxiety} setValue={setAnxiety} min={0} max={10} />
-                  <Slider label="Желание срочно торговать" value={urge} setValue={setUrge} min={0} max={10} />
-                  <Slider label="Злость / раздражение" value={anger} setValue={setAnger} min={0} max={10} />
-                </CardContent>
-              </Card>
+                <details className="group rounded-[1.75rem] border border-white/[0.08] bg-white/[0.035] p-5 shadow-xl shadow-black/15 backdrop-blur-xl">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <SectionTitle icon={<Timer className="h-4 w-4" />} title="Контрольные вводы" />
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:hidden">Открыть</span>
+                    <span className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:inline">Скрыть</span>
+                  </summary>
+                  <div className={`mt-5 grid gap-5 ${isLocked ? "blur-[0.5px]" : ""}`}>
+                    <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+                      <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
+                      <Slider label="Сон, часов" value={sleep} setValue={setSleep} min={0} max={10} suffix="ч" />
+                      <Slider label="Тревога" value={anxiety} setValue={setAnxiety} min={0} max={10} />
+                      <Slider label="Желание срочно торговать" value={urge} setValue={setUrge} min={0} max={10} />
+                      <Slider label="Злость / раздражение" value={anger} setValue={setAnger} min={0} max={10} />
+                    </div>
 
-              <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-                <CardContent className="space-y-4 p-5">
-                  <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
-                  <NumberInput label="PnL за день, $" value={dailyPnl} setValue={setDailyPnl} />
-                  <NumberInput label="Дневной убыток, $" value={dailyLoss} setValue={setDailyLoss} />
-                  <NumberInput label="Сделок сегодня" value={tradesToday} setValue={setTradesToday} />
-                  <NumberInput label="Стопов подряд" value={consecutiveStops} setValue={setConsecutiveStops} />
-                  <Toggle label="Есть чёткий план сделки" value={plan} setValue={setPlan} />
-                  <Toggle label="Новости проверены" value={newsChecked} setValue={setNewsChecked} />
-                  <Toggle label="Стоп заранее определён" value={stopSet} setValue={setStopSet} />
-                  <Toggle label="Есть желание отбиться" value={revenge} setValue={(value) => dispatchPlanning({ type: "set-emergency-lock", revenge: value, lockUntil })} danger />
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        const until = new Date();
-                        until.setHours(until.getHours() + 2);
-                        dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: until.toISOString() });
-                      }}
-                      variant="outline"
-                      className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
-                    >
-                      Блокировка 2 часа
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: "" })}
-                      variant="outline"
-                      className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
-                    >
-                      Снять блокировку
-                    </Button>
+                    <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+                      <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <NumberInput label="Финрезультат за день, $" value={dailyPnl} setValue={setDailyPnl} />
+                        <NumberInput label="Дневной убыток, $" value={dailyLoss} setValue={setDailyLoss} />
+                        <NumberInput label="Сделок сегодня" value={tradesToday} setValue={setTradesToday} />
+                        <NumberInput label="Стопов подряд" value={consecutiveStops} setValue={setConsecutiveStops} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Toggle label="Есть чёткий план сделки" value={plan} setValue={setPlan} />
+                        <Toggle label="Новости проверены" value={newsChecked} setValue={setNewsChecked} />
+                        <Toggle label="Стоп заранее определён" value={stopSet} setValue={setStopSet} />
+                        <Toggle label="Есть желание отбиться" value={revenge} setValue={(value) => dispatchPlanning({ type: "set-emergency-lock", revenge: value, lockUntil })} danger />
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const until = new Date();
+                            until.setHours(until.getHours() + 2);
+                            dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: until.toISOString() });
+                          }}
+                          variant="outline"
+                          className="rounded-xl border border-rose-200/20 bg-rose-200/[0.07] text-rose-100 hover:bg-rose-200/[0.1]"
+                        >
+                          Блокировка 2 часа
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: "" })}
+                          variant="outline"
+                          className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                        >
+                          Снять блокировку
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                </details>
+              </div>
             </div>
-
-            <DailyRiskBudgetCard
-              budgetUsd={activeDailyRiskBudget.budgetUsd}
-              plannedRiskUsed={plannedRiskUsed}
-              remainingRisk={dailyRiskRemaining}
-              onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
-            />
-          </div>
+          </motion.div>
         )}
 
         {activeTab === "plan" && (
-          <div className="space-y-5">
-            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-              <CardContent className="space-y-4 p-5">
-                <div className="flex items-center justify-between gap-3">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            <div className="rounded-[1.75rem] border border-white/[0.08] bg-white/[0.04] p-5 shadow-xl shadow-black/15 backdrop-blur-xl">
+                <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                   <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Торговый план на ${activePlanDateLabel}`} />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button onClick={() => shiftPlanDate(-1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
@@ -381,9 +402,9 @@ export default function TradeGateApp() {
                   </div>
                 </div>
 
-                <div className="space-y-5">
+                <div className="mt-5 space-y-5">
                   {MARKET_IDEAS.map((idea) => (
-                    <InstrumentPlan
+                    <InstrumentCard
                       key={idea.symbol}
                       idea={idea}
                       activePlanDate={activePlanDate}
@@ -401,19 +422,18 @@ export default function TradeGateApp() {
                   ))}
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-300">
+                <div className="mt-5 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-300">
                   Готовых сценариев на выбранную дату: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
                 </div>
-              </CardContent>
-            </Card>
+            </div>
 
             <TradeCalculator calculator={calculator} tradeMath={tradeMath} onChange={updateCalculator} />
-          </div>
+          </motion.div>
         )}
 
         {activeTab === "journal" && (
           <div className="space-y-5">
-            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+            <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
               <CardContent className="space-y-4 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Журнал: ${activePlanDateLabel}`} />
@@ -439,7 +459,7 @@ export default function TradeGateApp() {
               </CardContent>
             </Card>
 
-            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+            <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
               <CardContent className="space-y-4 p-5">
                 <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив торговых планов" />
                 {archivedPlans.length === 0 ? (
@@ -491,27 +511,16 @@ export default function TradeGateApp() {
         )}
 
         {activeTab === "analytics" && (
-          <div className="space-y-5">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <WeeklyReportCard report={weeklyReport} />
-            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-              <CardContent className="space-y-4 p-5">
-                <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Разрезы PnL и ошибок" />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <AnalyticsList title="PnL по инструментам" rows={analyticsStats.byInstrument} />
-                  <AnalyticsList title="PnL по сетапам" rows={analyticsStats.bySetup} />
-                </div>
-                <div className="grid gap-3 text-sm md:grid-cols-4">
-                  <Rule title="Техничность" value={`${weeklyReport.technicalTradePercentage}%`} />
-                  <Rule title="Нет входа" value={String(weeklyReport.noEntryCount)} />
-                  <Rule title="Стопов" value={String(weeklyReport.stopCount)} />
-                  <Rule title="Ошибок / не технично" value={String(analyticsStats.mistakeCount)} />
-                </div>
-                <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                  Дней с заметкой “что я пытаюсь вернуть”: {analyticsStats.revengeNoteCount}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+            <AnalyticsDashboard
+              report={weeklyReport}
+              byInstrument={analyticsStats.byInstrument}
+              bySetup={analyticsStats.bySetup}
+              mistakeCount={analyticsStats.mistakeCount}
+              revengeNoteCount={analyticsStats.revengeNoteCount}
+            />
+          </motion.div>
         )}
 
         {activeTab === "settings" && (
@@ -527,8 +536,8 @@ export default function TradeGateApp() {
             <AccountSettingsCard
               settings={accountSettings}
               dailyLossUsed={propDailyLossUsed}
-              totalLossUsed={Math.max(propDailyLossUsed, Number(accountSettings.personalMaxLoss) > 0 ? propDailyLossUsed : 0)}
-              profitProgress={Math.max(0, Number(dailyPnl) || 0)}
+              totalLossUsed={totalLossUsed}
+              profitProgress={profitProgress}
               onChange={(field, value) => dispatchPlanning({ type: "set-account-setting", field, value })}
             />
 
@@ -539,7 +548,7 @@ export default function TradeGateApp() {
               onDelete={(id) => dispatchPlanning({ type: "delete-setup", id })}
             />
 
-            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+            <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
               <CardContent className="p-5">
                 <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Правило для 100k аккаунта" />
                 <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
@@ -559,26 +568,6 @@ export default function TradeGateApp() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function AnalyticsList({ title, rows }: { title: string; rows: { label: string; value: number }[] }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">{title}</div>
-      {rows.length === 0 ? (
-        <div className="text-sm text-neutral-500">Нет архивных сделок за выбранную неделю.</div>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((row) => (
-            <div key={row.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm">
-              <span className="text-neutral-200">{row.label}</span>
-              <span className={`font-mono ${row.value >= 0 ? "text-emerald-200" : "text-red-200"}`}>{formatCurrency(row.value)}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

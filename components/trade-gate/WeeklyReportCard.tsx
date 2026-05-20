@@ -1,46 +1,48 @@
 import { BarChart3 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Rule, SectionTitle } from "./form-controls";
+import { MetricTile, PanelHeader, ProgressMeter, TerminalPanel } from "./terminal-ui";
 import { formatCurrency, formatPlanDate } from "./utils";
 import type { WeeklyReport } from "./types";
 
 export function WeeklyReportCard({ report }: { report: WeeklyReport }) {
   return (
-    <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-      <CardContent className="space-y-4 p-5">
-        <SectionTitle icon={<BarChart3 className="h-4 w-4" />} title={`Недельный отчёт: ${formatPlanDate(report.weekStart)} — ${formatPlanDate(report.weekEnd)}`} />
-        <div className="grid gap-3 text-sm md:grid-cols-4">
-          <Rule title="Итог недели" value={formatCurrency(report.totalPnl)} />
-          <Rule title="Сделок" value={String(report.tradeCount)} />
-          <Rule title="Техничных сделок" value={String(report.technicalTradeCount)} />
-          <Rule title="Техничность" value={`${report.technicalTradePercentage}%`} />
-          <Rule title="Лучший инструмент" value={report.bestInstrument} />
-          <Rule title="Худший инструмент" value={report.worstInstrument} />
-          <Rule title="Лучший сетап" value={report.bestSetup} />
-          <Rule title="Худший сетап" value={report.worstSetup} />
-          <Rule title="Стопов" value={String(report.stopCount)} />
-          <Rule title="Тейков" value={String(report.takeCount)} />
-          <Rule title="Ручных закрытий" value={String(report.manualCloseCount)} />
-          <Rule title="Сценариев без входа" value={String(report.noEntryCount)} />
+    <TerminalPanel className="p-5" glow={report.totalPnl >= 0 ? "emerald" : "red"}>
+      <PanelHeader
+        eyebrow="Недельный отчёт"
+        title={`${formatPlanDate(report.weekStart)} — ${formatPlanDate(report.weekEnd)}`}
+        meta={<BarChart3 className="h-5 w-5 text-neutral-500" />}
+      />
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <MetricTile label="Итог недели" value={formatCurrency(report.totalPnl)} tone={report.totalPnl >= 0 ? "emerald" : "red"} />
+        <MetricTile label="Сделок" value={String(report.tradeCount)} />
+        <MetricTile label="Техничных" value={String(report.technicalTradeCount)} />
+        <MetricTile label="Техничность" value={`${report.technicalTradePercentage}%`} tone={report.technicalTradePercentage >= 70 ? "emerald" : "amber"} />
+      </div>
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1.2fr]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricTile label="Лучший инструмент" value={report.bestInstrument} tone="emerald" />
+          <MetricTile label="Худший инструмент" value={report.worstInstrument} tone="red" />
+          <MetricTile label="Лучший сетап" value={report.bestSetup} tone="emerald" />
+          <MetricTile label="Худший сетап" value={report.worstSetup} tone="red" />
         </div>
         <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Статистика по сетапам</div>
+          <div className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Статистика по сетапам</div>
           {report.setupStats.length === 0 ? (
             <div className="text-sm text-neutral-500">За выбранную неделю пока нет архивных сделок с входом.</div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {report.setupStats.map((setup) => (
-                <div key={setup.setupName} className="grid gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-200 md:grid-cols-[1fr_auto_auto_auto]">
-                  <div className="font-medium">{setup.setupName}</div>
-                  <div>Итог: {formatCurrency(setup.totalPnl)}</div>
-                  <div>Сделок: {setup.tradeCount}</div>
-                  <div>Техничность: {setup.technicalTradePercentage}%</div>
+                <div key={setup.setupName} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                    <div className="font-medium text-neutral-100">{setup.setupName}</div>
+                    <div className={`font-mono ${setup.totalPnl >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatCurrency(setup.totalPnl)}</div>
+                  </div>
+                  <ProgressMeter label={`${setup.tradeCount} сделок`} value={setup.technicalTradePercentage} detail={`${setup.technicalTradePercentage}% техничность`} tone={setup.technicalTradePercentage >= 70 ? "emerald" : "amber"} />
                 </div>
               ))}
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </TerminalPanel>
   );
 }

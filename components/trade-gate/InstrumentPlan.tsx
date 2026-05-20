@@ -52,7 +52,7 @@ export function InstrumentPlan({
           </div>
 
           <label className="mt-4 block">
-            <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Идея / bias</div>
+            <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Идея / направление</div>
             <textarea
               value={getIdeaText("bias")}
               onChange={(event) => onUpdateIdeaText(idea.symbol, "bias", event.target.value)}

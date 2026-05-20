@@ -15,14 +15,14 @@ export function CloudSync({
   onSave: () => void;
 }) {
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-xl backdrop-blur">
+    <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 shadow-xl shadow-black/15 backdrop-blur">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">Синхронизация</div>
       <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
         <input
           value={syncKey}
           onChange={(event) => onSyncKeyChange(event.target.value)}
           placeholder="Ключ синхронизации, например nataliia-main"
-          className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+          className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-200/20"
         />
         <Button onClick={onLoad} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
           Загрузить из облака
