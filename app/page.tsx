@@ -21,7 +21,8 @@ export default function TradeGateApp() {
   const [voiceStatus, setVoiceStatus] = useState("");
 
   const startVoiceInput = (onText) => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition =
+  (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setVoiceStatus("Голосовой ввод не поддерживается в этом браузере. Попробуй Chrome или Safari.");
