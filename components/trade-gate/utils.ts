@@ -1,4 +1,5 @@
-import type { Direction, SessionPlan, TradeDirection, TradeMath } from "./types";
+import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_SETUPS } from "./constants";
+import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, SessionPlan, Setup, TradeDirection, TradeMath, WeeklyReport, WeeklySetupReport } from "./types";
 
 export function getDateISO(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -30,10 +31,14 @@ export function formatPlanDate(isoDate: string) {
   return `${Number(day)} ${months[Number(month) - 1]} ${year}`;
 }
 
-export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date.now()): SessionPlan {
+export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date.now(), setup?: Setup): SessionPlan {
+  const selectedSetup = setup ?? DEFAULT_SETUPS[0];
+
   return {
     id,
     planDate,
+    setupId: selectedSetup?.id ?? "",
+    setupName: selectedSetup?.name ?? "Сетап не выбран",
     symbol,
     direction: "long",
     entryZone: "",
@@ -64,6 +69,201 @@ export function getInstrumentImageKey(date: string, symbol: string) {
 
 export function getMarketIdeaKey(date: string, symbol: string, field: "bias" | "scenario") {
   return `${date}:${symbol}:${field}`;
+}
+
+export function getNextDateISO(isoDate: string) {
+  const date = new Date(`${isoDate}T12:00:00`);
+  date.setDate(date.getDate() + 1);
+  return getDateISO(date);
+}
+
+export function getWeekRange(isoDate: string) {
+  const date = new Date(`${isoDate}T12:00:00`);
+  const day = date.getDay() || 7;
+  const start = new Date(date);
+  start.setDate(date.getDate() - day + 1);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return {
+    weekStart: getDateISO(start),
+    weekEnd: getDateISO(end),
+  };
+}
+
+export function getSetupName(setups: Setup[], setupId: string, fallbackName = "Сетап не выбран") {
+  return setups.find((setup) => setup.id === setupId)?.name ?? fallbackName;
+}
+
+export function getActiveSetups(setups: Setup[]) {
+  return setups.filter((setup) => setup.isActive);
+}
+
+export function getPreferredSetup(setups: Setup[]) {
+  return getActiveSetups(setups)[0] ?? setups[0] ?? DEFAULT_SETUPS[0];
+}
+
+export function getPlanSetupName(plan: Pick<SessionPlan, "setupId" | "setupName">) {
+  return plan.setupName || "Сетап не выбран";
+}
+
+export function createCustomSetup({ name, description = "", defaultInstrument = "" }: { name: string; description?: string; defaultInstrument?: string }): Setup {
+  const now = new Date().toISOString();
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return {
+    id: `custom-${slug || "setup"}-${Date.now()}`,
+    name: name.trim(),
+    description: description.trim(),
+    defaultInstrument: defaultInstrument.trim().toUpperCase(),
+    isDefault: false,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function getDailyRiskBudget(budgets: Record<string, DailyRiskBudget>, planDate: string): DailyRiskBudget {
+  return budgets[planDate] ?? { planDate, budgetUsd: DEFAULT_DAILY_RISK_BUDGET };
+}
+
+export function calculatePlannedRisk(plans: SessionPlan[], planDate: string) {
+  return plans
+    .filter((plan) => plan.planDate === planDate)
+    .reduce((total, plan) => total + Math.max(0, Number(plan.tradeRisk) || 0), 0);
+}
+
+export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanDate: string): WeeklyReport {
+  const { weekStart, weekEnd } = getWeekRange(activePlanDate);
+  const plans = archivedPlans.filter((plan) => plan.planDate >= weekStart && plan.planDate <= weekEnd);
+  const tradePlans = plans.filter((plan) => plan.resultStatus !== "not_taken");
+  const totalPnl = tradePlans.reduce((total, plan) => total + (Number(plan.finalResult) || 0), 0);
+  const technicalTradeCount = tradePlans.filter((plan) => plan.technical === "yes").length;
+  const setupStats = getSetupStats(tradePlans);
+
+  return {
+    weekStart,
+    weekEnd,
+    totalPnl,
+    tradeCount: tradePlans.length,
+    technicalTradeCount,
+    technicalTradePercentage: tradePlans.length > 0 ? Math.round((technicalTradeCount / tradePlans.length) * 100) : 0,
+    bestInstrument: bestGroup(tradePlans, (plan) => plan.symbol),
+    worstInstrument: worstGroup(tradePlans, (plan) => plan.symbol),
+    bestSetup: bestGroup(tradePlans, getPlanSetupName),
+    worstSetup: worstGroup(tradePlans, getPlanSetupName),
+    setupStats,
+    stopCount: plans.filter((plan) => plan.resultStatus === "stop").length,
+    takeCount: plans.filter((plan) => plan.resultStatus === "take").length,
+    manualCloseCount: plans.filter((plan) => plan.resultStatus === "manual_profit" || plan.resultStatus === "manual_loss" || plan.resultStatus === "breakeven").length,
+    noEntryCount: plans.filter((plan) => plan.resultStatus === "not_taken").length,
+  };
+}
+
+function getSetupStats(plans: ArchivedPlan[]): WeeklySetupReport[] {
+  const groups = new Map<string, { totalPnl: number; tradeCount: number; technicalCount: number }>();
+
+  for (const plan of plans) {
+    const setupName = getPlanSetupName(plan);
+    const current = groups.get(setupName) ?? { totalPnl: 0, tradeCount: 0, technicalCount: 0 };
+    current.totalPnl += Number(plan.finalResult) || 0;
+    current.tradeCount += 1;
+    current.technicalCount += plan.technical === "yes" ? 1 : 0;
+    groups.set(setupName, current);
+  }
+
+  return [...groups.entries()]
+    .map(([setupName, stats]) => ({
+      setupName,
+      totalPnl: stats.totalPnl,
+      tradeCount: stats.tradeCount,
+      technicalTradePercentage: stats.tradeCount > 0 ? Math.round((stats.technicalCount / stats.tradeCount) * 100) : 0,
+    }))
+    .sort((a, b) => b.totalPnl - a.totalPnl);
+}
+
+export function calculatePermission({
+  status,
+  executionReadiness,
+  emotionalReadiness,
+  disciplineReadiness,
+  dailyRiskRemaining,
+  revengeDetectorScore,
+  personalDailyStopHit,
+  tradesToday,
+  consecutiveStops,
+}: {
+  status: "OK" | "CAUTION" | "DANGER" | "LOCKED";
+  executionReadiness: number;
+  emotionalReadiness: number;
+  disciplineReadiness: number;
+  dailyRiskRemaining: number;
+  revengeDetectorScore: number;
+  personalDailyStopHit: boolean;
+  tradesToday: number;
+  consecutiveStops: number;
+}): PermissionToTrade {
+  if (status === "LOCKED" || personalDailyStopHit || dailyRiskRemaining <= 0 || revengeDetectorScore >= 60 || consecutiveStops >= 3) {
+    return {
+      permission: "denied",
+      maxAllowedRisk: 0,
+      maxAdditionalTrades: 0,
+      reEntryAllowed: false,
+      instruction: "Торговля запрещена. Закрой терминал и сделай разбор.",
+    };
+  }
+
+  const readinessFloor = Math.min(executionReadiness, emotionalReadiness, disciplineReadiness);
+  const maxAdditionalTrades = Math.max(0, 3 - tradesToday);
+
+  if (status === "DANGER" || status === "CAUTION" || readinessFloor < 70 || revengeDetectorScore >= 35 || consecutiveStops >= 2 || tradesToday >= 2) {
+    return {
+      permission: "reduced",
+      maxAllowedRisk: Math.max(0, Math.min(dailyRiskRemaining, 250)),
+      maxAdditionalTrades: Math.min(maxAdditionalTrades, 1),
+      reEntryAllowed: false,
+      instruction: "Только одна попытка минимальным риском. После стопа повторный вход запрещён.",
+    };
+  }
+
+  return {
+    permission: "granted",
+    maxAllowedRisk: Math.max(0, Math.min(dailyRiskRemaining, 500)),
+    maxAdditionalTrades,
+    reEntryAllowed: true,
+    instruction: "Торговать можно только по готовому сценарию с заранее заданным стопом.",
+  };
+}
+
+function bestGroup(plans: ArchivedPlan[], getKey: (plan: ArchivedPlan) => string) {
+  return sortedGroup(plans, getKey, "best");
+}
+
+function worstGroup(plans: ArchivedPlan[], getKey: (plan: ArchivedPlan) => string) {
+  return sortedGroup(plans, getKey, "worst");
+}
+
+function sortedGroup(plans: ArchivedPlan[], getKey: (plan: ArchivedPlan) => string, mode: "best" | "worst") {
+  const totals = new Map<string, number>();
+
+  for (const plan of plans) {
+    const key = getKey(plan);
+    totals.set(key, (totals.get(key) ?? 0) + (Number(plan.finalResult) || 0));
+  }
+
+  const sorted = [...totals.entries()].sort((a, b) => (mode === "best" ? b[1] - a[1] : a[1] - b[1]));
+  if (!sorted[0]) return "—";
+  return `${sorted[0][0]} (${formatCurrency(sorted[0][1])})`;
+}
+
+export function formatCurrency(value: number) {
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toFixed(0)}`;
 }
 
 export function calculateTradeMath({

@@ -4,8 +4,8 @@ import { NumberInput, Rule, SectionTitle, SelectInput, TextInput, Warning } from
 import type { TradeCalculatorField, TradeCalculatorState, TradeDirection, TradeMath } from "./types";
 
 const directionOptions: { value: TradeDirection; label: string }[] = [
-  { value: "long", label: "Long" },
-  { value: "short", label: "Short" },
+  { value: "long", label: "Лонг" },
+  { value: "short", label: "Шорт" },
 ];
 
 export function TradeCalculator({

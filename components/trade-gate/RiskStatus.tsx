@@ -24,17 +24,17 @@ export function RiskStatus({ result }: { result: GateResult }) {
             <div className="text-2xl font-semibold">{result.title}</div>
             <div className="mt-1 text-sm text-neutral-300">{result.subtitle}</div>
             <div className="mt-4 flex items-center gap-3">
-              <div className="text-xs uppercase tracking-[0.25em] text-neutral-500">Risk Score</div>
+              <div className="text-xs uppercase tracking-[0.25em] text-neutral-500">Оценка риска</div>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-current transition-all" style={{ width: `${Math.min(result.risk * 8, 100)}%` }} />
               </div>
               <div className="font-mono text-sm text-neutral-200">{result.risk}</div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
-              <ReadinessCard title="Execution" value={result.readiness.execution} />
-              <ReadinessCard title="Emotional" value={result.readiness.emotional} />
-              <ReadinessCard title="Discipline" value={result.readiness.discipline} />
-              <ReadinessCard title="Revenge Risk" value={result.revengeDetectorScore} inverse />
+              <ReadinessCard title="Исполнение" value={result.readiness.execution} />
+              <ReadinessCard title="Эмоции" value={result.readiness.emotional} />
+              <ReadinessCard title="Дисциплина" value={result.readiness.discipline} />
+              <ReadinessCard title="Риск отбиться" value={result.revengeDetectorScore} inverse />
             </div>
 
             {result.warnings.length > 0 && (

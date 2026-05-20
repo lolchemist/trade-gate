@@ -3,11 +3,11 @@ import { Button } from "@/components/ui/button";
 import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { calculateScenarioTradeMath, isPlanReady } from "./utils";
-import type { Direction, EditablePlanField, ResultStatus, SelectOption, SessionPlan, TechnicalStatus } from "./types";
+import type { Direction, EditablePlanField, ResultStatus, SelectOption, SessionPlan, Setup, TechnicalStatus } from "./types";
 
 const directionOptions: SelectOption<Direction>[] = [
-  { value: "long", label: "Long" },
-  { value: "short", label: "Short" },
+  { value: "long", label: "Лонг" },
+  { value: "short", label: "Шорт" },
   { value: "both", label: "Оба сценария" },
 ];
 
@@ -24,17 +24,20 @@ const technicalOptions = Object.entries(TECHNICAL_STATUS_LABELS).map(([value, la
 export function ScenarioCard({
   item,
   index,
+  setups,
   onUpdate,
   onArchive,
   onRemove,
 }: {
   item: SessionPlan;
   index: number;
+  setups: Setup[];
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onArchive: (id: number) => void;
   onRemove: (id: number) => void;
 }) {
   const ready = isPlanReady(item);
+  const setupOptions = getScenarioSetupOptions(setups, item);
 
   return (
     <div className={`rounded-2xl border p-4 ${ready ? "border-emerald-400/30 bg-emerald-500/10 text-neutral-100" : "border-white/10 bg-black/25 text-neutral-100"}`}>
@@ -54,12 +57,22 @@ export function ScenarioCard({
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
+        <SelectInput
+          label="Сетап"
+          value={item.setupId}
+          setValue={(value) => {
+            const setup = setupOptions.find((option) => option.value === value);
+            onUpdate(item.id, "setupId", value);
+            onUpdate(item.id, "setupName", setup?.label ?? item.setupName);
+          }}
+          options={setupOptions}
+        />
         <SelectInput label="Направление" value={item.direction} setValue={(value) => onUpdate(item.id, "direction", value)} options={directionOptions} />
         <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(value) => onUpdate(item.id, "entryZone", value)} />
-        <TextInput label="Триггер входа" value={item.trigger} setValue={(value) => onUpdate(item.id, "trigger", value)} />
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <TextInput label="Триггер входа" value={item.trigger} setValue={(value) => onUpdate(item.id, "trigger", value)} />
         <TextInput label="Стоп" value={item.stop} setValue={(value) => onUpdate(item.id, "stop", value)} />
         <TextInput label="Тейк" value={item.take} setValue={(value) => onUpdate(item.id, "take", value)} />
       </div>
@@ -110,6 +123,14 @@ export function ScenarioCard({
       </label>
     </div>
   );
+}
+
+function getScenarioSetupOptions(setups: Setup[], item: SessionPlan): SelectOption[] {
+  const activeOptions = setups.filter((setup) => setup.isActive).map((setup) => ({ value: setup.id, label: setup.name }));
+  const hasCurrent = activeOptions.some((option) => option.value === item.setupId);
+  if (hasCurrent) return activeOptions;
+
+  return [{ value: item.setupId, label: `${item.setupName || "Скрытый сетап"} (скрыт)` }, ...activeOptions];
 }
 
 function ScenarioTradeMath({ item }: { item: SessionPlan }) {

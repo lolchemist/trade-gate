@@ -25,6 +25,8 @@ export type MarketIdeaNotes = Record<string, string>;
 export interface SessionPlan {
   id: number;
   planDate: string;
+  setupId: string;
+  setupName: string;
   symbol: string;
   direction: Direction;
   entryZone: string;
@@ -55,21 +57,100 @@ export interface MarketIdea {
   scenario: string;
 }
 
+export interface Setup {
+  id: string;
+  name: string;
+  description?: string;
+  defaultInstrument?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyRiskBudget {
+  planDate: string;
+  budgetUsd: string;
+}
+
+export interface AccountSettings {
+  accountSize: string;
+  propDailyLossLimit: string;
+  personalDailyStop: string;
+  maxLossLimit: string;
+  personalMaxLoss: string;
+  profitTarget: string;
+}
+
+export interface WeeklyReport {
+  weekStart: string;
+  weekEnd: string;
+  totalPnl: number;
+  tradeCount: number;
+  technicalTradeCount: number;
+  technicalTradePercentage: number;
+  bestInstrument: string;
+  worstInstrument: string;
+  bestSetup: string;
+  worstSetup: string;
+  setupStats: WeeklySetupReport[];
+  stopCount: number;
+  takeCount: number;
+  manualCloseCount: number;
+  noEntryCount: number;
+}
+
+export interface WeeklySetupReport {
+  setupName: string;
+  totalPnl: number;
+  tradeCount: number;
+  technicalTradePercentage: number;
+}
+
+export interface PermissionToTrade {
+  permission: "granted" | "reduced" | "denied";
+  maxAllowedRisk: number;
+  maxAdditionalTrades: number;
+  reEntryAllowed: boolean;
+  instruction: string;
+}
+
 export interface PlanningState {
+  setups: Setup[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
+  dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  accountSettings: AccountSettings;
+  emergencyNotes: Record<string, string>;
   activePlanDate: string;
   syncKey: string;
 }
 
 export interface CloudPayload {
+  setups: Setup[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
+  dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  accountSettings: AccountSettings;
+  emergencyNotes: Record<string, string>;
   activePlanDate: string;
+}
+
+export type StorageSource = "supabase" | "localStorage" | "default";
+
+export interface StorageLoadResult {
+  state: PlanningState;
+  source: StorageSource;
+  message: string;
+}
+
+export interface StorageSaveResult {
+  source: "supabase" | "localStorage";
+  message: string;
 }
 
 export interface ReadinessScores {

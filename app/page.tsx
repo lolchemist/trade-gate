@@ -1,30 +1,45 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Shield, Timer, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
+import { DailyRiskBudgetCard } from "@/components/trade-gate/DailyRiskBudgetCard";
+import { EmergencyCard } from "@/components/trade-gate/EmergencyCard";
 import { InstrumentPlan } from "@/components/trade-gate/InstrumentPlan";
+import { PermissionCard } from "@/components/trade-gate/PermissionCard";
 import { RiskStatus } from "@/components/trade-gate/RiskStatus";
+import { SetupPlaybookCard } from "@/components/trade-gate/SetupPlaybookCard";
 import { TradeCalculator } from "@/components/trade-gate/TradeCalculator";
-import { LOSS_LIMIT, MARKET_IDEAS, RESULT_STATUS_LABELS, STORAGE_KEY, TECHNICAL_STATUS_LABELS } from "@/components/trade-gate/constants";
+import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
+import { DEFAULT_SETUPS, LOSS_LIMIT, MARKET_IDEAS, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "@/components/trade-gate/constants";
 import { ArchiveField, NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
+import { createTradeGateStorage } from "@/components/trade-gate/storage";
 import {
+  calculatePermission,
+  calculatePlannedRisk,
   calculateTradeMath,
+  calculateWeeklyReport,
+  createCustomSetup,
   createSessionPlan,
   formatPlanDate,
+  getActiveSetups,
+  getDailyRiskBudget,
   getDateISO,
   getInitialPlanDate,
   getInstrumentImageKey,
   getMarketIdeaKey,
+  getNextDateISO,
+  getPreferredSetup,
+  getSetupName,
   isPlanReady,
 } from "@/components/trade-gate/utils";
 import type {
+  AccountSettings,
   ArchivedPlan,
-  CloudPayload,
   EditablePlanField,
   GateResult,
   MarketIdeaField,
@@ -33,6 +48,7 @@ import type {
   PlanningState,
   ReadinessScores,
   SessionPlan,
+  Setup,
   TradeCalculatorField,
   TradeCalculatorState,
 } from "@/components/trade-gate/types";
@@ -43,10 +59,21 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const initialPlanDate = getInitialPlanDate();
 
 const initialPlanningState: PlanningState = {
-  sessionPlans: [createSessionPlan(initialPlanDate, "BCOUSD", 1)],
+  setups: DEFAULT_SETUPS,
+  sessionPlans: [createSessionPlan(initialPlanDate, "BCOUSD", 1, DEFAULT_SETUPS[0])],
   archivedPlans: [],
   instrumentImages: {},
   marketIdeaNotes: {},
+  dailyRiskBudgets: {},
+  accountSettings: {
+    accountSize: "100000",
+    propDailyLossLimit: "5000",
+    personalDailyStop: "1000",
+    maxLossLimit: "10000",
+    personalMaxLoss: "3000",
+    profitTarget: "10000",
+  },
+  emergencyNotes: {},
   activePlanDate: initialPlanDate,
   syncKey: "nataliia-main",
 };
@@ -73,6 +100,13 @@ type PlanningAction =
   | { type: "restore-plan"; id: number }
   | { type: "set-instrument-image"; key: string; value: string }
   | { type: "set-market-idea-note"; key: string; value: string }
+  | { type: "set-daily-risk-budget"; planDate: string; budgetUsd: string }
+  | { type: "set-account-setting"; field: keyof AccountSettings; value: string }
+  | { type: "set-emergency-note"; planDate: string; value: string }
+  | { type: "add-setup"; name: string; description: string; defaultInstrument: string }
+  | { type: "update-setup"; id: string; changes: Partial<Pick<Setup, "name" | "description" | "defaultInstrument" | "isActive">> }
+  | { type: "delete-setup"; id: string }
+  | { type: "close-trading-day"; planDate: string; nextPlanDate: string }
   | { type: "reset-session"; activePlanDate: string };
 
 function planningReducer(state: PlanningState, action: PlanningAction): PlanningState {
@@ -80,10 +114,14 @@ function planningReducer(state: PlanningState, action: PlanningAction): Planning
     case "hydrate":
       return {
         ...state,
+        setups: action.payload.setups ?? state.setups,
         sessionPlans: action.payload.sessionPlans ?? state.sessionPlans,
         archivedPlans: action.payload.archivedPlans ?? state.archivedPlans,
         instrumentImages: action.payload.instrumentImages ?? state.instrumentImages,
         marketIdeaNotes: action.payload.marketIdeaNotes ?? state.marketIdeaNotes,
+        dailyRiskBudgets: action.payload.dailyRiskBudgets ?? state.dailyRiskBudgets,
+        accountSettings: action.payload.accountSettings ?? state.accountSettings,
+        emergencyNotes: action.payload.emergencyNotes ?? state.emergencyNotes,
         activePlanDate: action.payload.activePlanDate ?? state.activePlanDate,
         syncKey: action.payload.syncKey ?? state.syncKey,
       };
@@ -92,7 +130,7 @@ function planningReducer(state: PlanningState, action: PlanningAction): Planning
     case "set-sync-key":
       return { ...state, syncKey: action.syncKey };
     case "add-plan":
-      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol)] };
+      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol, Date.now(), getPreferredSetup(state.setups))] };
     case "update-plan":
       return {
         ...state,
@@ -109,6 +147,7 @@ function planningReducer(state: PlanningState, action: PlanningAction): Planning
         archivedPlans: [
           {
             ...planToArchive,
+            setupName: getSetupName(state.setups, planToArchive.setupId, planToArchive.setupName),
             archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
           },
           ...state.archivedPlans,
@@ -132,10 +171,54 @@ function planningReducer(state: PlanningState, action: PlanningAction): Planning
       return { ...state, instrumentImages: { ...state.instrumentImages, [action.key]: action.value } };
     case "set-market-idea-note":
       return { ...state, marketIdeaNotes: { ...state.marketIdeaNotes, [action.key]: action.value } };
+    case "set-daily-risk-budget":
+      return {
+        ...state,
+        dailyRiskBudgets: {
+          ...state.dailyRiskBudgets,
+          [action.planDate]: { planDate: action.planDate, budgetUsd: action.budgetUsd },
+        },
+      };
+    case "set-account-setting":
+      return { ...state, accountSettings: { ...state.accountSettings, [action.field]: action.value } };
+    case "set-emergency-note":
+      return { ...state, emergencyNotes: { ...state.emergencyNotes, [action.planDate]: action.value } };
+    case "add-setup": {
+      const setup = createCustomSetup({ name: action.name, description: action.description, defaultInstrument: action.defaultInstrument });
+      return { ...state, setups: [...state.setups, setup] };
+    }
+    case "update-setup": {
+      const now = new Date().toISOString();
+      return {
+        ...state,
+        setups: state.setups.map((setup) => (setup.id === action.id ? { ...setup, ...action.changes, updatedAt: now } : setup)),
+      };
+    }
+    case "delete-setup":
+      return { ...state, setups: state.setups.filter((setup) => setup.id !== action.id || setup.isDefault) };
+    case "close-trading-day": {
+      const plansToArchive = state.sessionPlans.filter((plan) => plan.planDate === action.planDate);
+      const remainingSessionPlans = state.sessionPlans.filter((plan) => plan.planDate !== action.planDate);
+      const nextDayAlreadyPrepared = remainingSessionPlans.some((plan) => plan.planDate === action.nextPlanDate);
+
+      return {
+        ...state,
+        activePlanDate: action.nextPlanDate,
+        archivedPlans: [
+          ...plansToArchive.map((plan) => ({
+            ...plan,
+            setupName: getSetupName(state.setups, plan.setupId, plan.setupName),
+            archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+          })),
+          ...state.archivedPlans,
+        ],
+        sessionPlans: nextDayAlreadyPrepared ? remainingSessionPlans : [createSessionPlan(action.nextPlanDate, "BCOUSD", Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
+      };
+    }
     case "reset-session":
       return {
         ...state,
-        sessionPlans: [createSessionPlan(action.activePlanDate, "BCOUSD", 1)],
+        sessionPlans: [createSessionPlan(action.activePlanDate, "BCOUSD", 1, getPreferredSetup(state.setups))],
         archivedPlans: [],
       };
     default:
@@ -144,11 +227,7 @@ function planningReducer(state: PlanningState, action: PlanningAction): Planning
 }
 
 export default function TradeGateApp() {
-  const supabase = useMemo(() => {
-    if (!supabaseUrl || !supabaseAnonKey) return null;
-    return createClient(supabaseUrl, supabaseAnonKey);
-  }, []);
-
+  const storage = useMemo(() => createTradeGateStorage({ supabaseUrl, supabaseAnonKey }), []);
   const [planning, dispatchPlanning] = useReducer(planningReducer, initialPlanningState);
   const [isHydrated, setIsHydrated] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
@@ -167,42 +246,60 @@ export default function TradeGateApp() {
   const [lockUntil, setLockUntil] = useState("");
   const [calculator, setCalculator] = useState<TradeCalculatorState>(initialCalculatorState);
 
-  const { sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, activePlanDate, syncKey } = planning;
+  const { setups, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
+  const activeSetups = getActiveSetups(setups);
+  const activeDailyRiskBudget = getDailyRiskBudget(dailyRiskBudgets, activePlanDate);
+  const plannedRiskUsed = calculatePlannedRisk(sessionPlans, activePlanDate);
+  const dailyRiskRemaining = (Number(activeDailyRiskBudget.budgetUsd) || 0) - plannedRiskUsed;
+  const emergencyNote = emergencyNotes[activePlanDate] ?? "";
+  const personalDailyStopHit = Number(dailyPnl) <= -(Number(accountSettings.personalDailyStop) || 0) || Number(dailyLoss) <= -(Number(accountSettings.personalDailyStop) || 0);
+  const propDailyLossUsed = Math.max(Math.abs(Math.min(Number(dailyPnl) || 0, Number(dailyLoss) || 0, 0)), 0);
+  const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;
+  const propDailyLossClose = propDailyLossLimit > 0 && propDailyLossUsed >= propDailyLossLimit * 0.8;
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        dispatchPlanning({ type: "hydrate", payload: JSON.parse(saved) as Partial<PlanningState> });
-      }
-    } catch (error) {
-      console.error("Failed to load saved Trade Gate state", error);
-    } finally {
-      setIsHydrated(true);
-    }
-  }, []);
+    let cancelled = false;
+
+    storage
+      .loadInitial(initialPlanningState)
+      .then((result) => {
+        if (cancelled) return;
+        dispatchPlanning({ type: "hydrate", payload: result.state });
+        if (result.source !== "default") {
+          setSyncStatus(result.message);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Failed to initialize Trade Gate storage", error);
+          setSyncStatus("Не удалось загрузить сохранённое состояние");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsHydrated(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storage]);
 
   useEffect(() => {
     if (!isHydrated) return;
 
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(planning));
-    } catch (error) {
-      console.error("Failed to save Trade Gate state", error);
-    }
-  }, [isHydrated, planning]);
+    const timeout = window.setTimeout(() => {
+      storage.save(planning).then((result) => {
+        if (result.source === "localStorage") {
+          setSyncStatus(result.message);
+        }
+      });
+    }, 700);
 
-  const cloudPayload: CloudPayload = useMemo(
-    () => ({
-      sessionPlans,
-      archivedPlans,
-      instrumentImages,
-      marketIdeaNotes,
-      activePlanDate,
-    }),
-    [sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, activePlanDate]
-  );
+    return () => window.clearTimeout(timeout);
+  }, [isHydrated, planning, storage]);
 
   const tradeMath = useMemo(() => calculateTradeMath(calculator), [calculator]);
 
@@ -257,7 +354,7 @@ export default function TradeGateApp() {
     if (anger >= 6) {
       riskScore += 3;
       readiness.emotional -= 20;
-      reasons.push("злость / раздражение: риск revenge trading");
+      reasons.push("злость / раздражение: риск торговли из желания отбиться");
     }
 
     if (dailyPnlNumber <= LOSS_LIMIT) {
@@ -272,6 +369,22 @@ export default function TradeGateApp() {
       reasons.push("дневной убыток ниже -1000$: торговля должна быть остановлена");
     }
 
+    if (personalDailyStopHit) {
+      riskScore += 50;
+      readiness.discipline -= 50;
+      reasons.push("личный дневной стоп достигнут");
+    }
+
+    if (dailyRiskRemaining < 0) {
+      riskScore += 50;
+      readiness.discipline -= 50;
+      reasons.push("дневной риск-бюджет превышен");
+    }
+
+    if (propDailyLossClose) {
+      warnings.push("Лимит дневной просадки проп-фирмы близко. Снизь риск или остановись.");
+    }
+
     if (tradesTodayNumber >= 3) {
       riskScore += 3;
       readiness.discipline -= 15;
@@ -282,7 +395,7 @@ export default function TradeGateApp() {
       riskScore += 30;
       readiness.emotional -= 35;
       readiness.discipline -= 25;
-      reasons.push("3 стопа подряд: высокий риск revenge trading");
+      reasons.push("3 стопа подряд: высокий риск торговли из желания отбиться");
     }
 
     if (!plan) {
@@ -343,10 +456,10 @@ export default function TradeGateApp() {
     );
 
     if (revengeDetectorScore >= 60) {
-      reasons.push("Revenge detector: состояние похоже на попытку отбиться, а не на спокойное исполнение плана");
+      reasons.push("Детектор желания отбиться: состояние похоже на попытку вернуть убыток, а не на спокойное исполнение плана");
       readiness.emotional = Math.min(readiness.emotional, 25);
     } else if (revengeDetectorScore >= 35) {
-      warnings.push("Revenge detector: есть признаки эмоционального давления, снизь риск");
+      warnings.push("Детектор желания отбиться: есть признаки эмоционального давления, снизь риск");
       readiness.emotional = Math.min(readiness.emotional, 60);
     }
 
@@ -354,7 +467,7 @@ export default function TradeGateApp() {
     readiness.emotional = Math.max(0, Math.min(100, Math.round(readiness.emotional)));
     readiness.discipline = Math.max(0, Math.min(100, Math.round(readiness.discipline)));
 
-    const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || revenge || !stopSet || !tradeMath.valid || stopsNumber >= 3;
+    const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || dailyRiskRemaining < 0 || revenge || !stopSet || !tradeMath.valid || stopsNumber >= 3;
 
     if (hardLock) {
       return {
@@ -423,55 +536,39 @@ export default function TradeGateApp() {
     calculator.entryReason,
     sessionPlanReadyCount,
     activePlanDateLabel,
+    personalDailyStopHit,
+    dailyRiskRemaining,
+    propDailyLossClose,
   ]);
 
+  const weeklyReport = useMemo(() => calculateWeeklyReport(archivedPlans, activePlanDate), [archivedPlans, activePlanDate]);
+  const permission = useMemo(
+    () =>
+      calculatePermission({
+        status: riskResult.status,
+        executionReadiness: riskResult.readiness.execution,
+        emotionalReadiness: riskResult.readiness.emotional,
+        disciplineReadiness: riskResult.readiness.discipline,
+        dailyRiskRemaining,
+        revengeDetectorScore: riskResult.revengeDetectorScore,
+        personalDailyStopHit,
+        tradesToday: Number(tradesToday) || 0,
+        consecutiveStops: Number(consecutiveStops) || 0,
+      }),
+    [riskResult, dailyRiskRemaining, personalDailyStopHit, tradesToday, consecutiveStops]
+  );
+
   const saveToCloud = async () => {
-    if (!supabase) {
-      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
-      return;
-    }
-
-    setSyncStatus("Сохраняю в базу…");
-    const { error } = await supabase
-      .from("trade_gate_state")
-      .upsert(
-        {
-          user_key: syncKey,
-          data: cloudPayload,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_key" }
-      );
-
-    if (error) {
-      setSyncStatus(`Ошибка сохранения: ${error.message}`);
-      return;
-    }
-
-    setSyncStatus("Сохранено в базе");
+    setSyncStatus(storage.isCloudConfigured ? "Сохраняю в Supabase…" : "Supabase не настроен, сохраняю локально…");
+    const result = await storage.save(planning);
+    setSyncStatus(result.message);
   };
 
   const loadFromCloud = async () => {
-    if (!supabase) {
-      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
-      return;
-    }
-
-    setSyncStatus("Загружаю из базы…");
-    const { data, error } = await supabase.from("trade_gate_state").select("data").eq("user_key", syncKey).maybeSingle();
-
-    if (error) {
-      setSyncStatus(`Ошибка загрузки: ${error.message}`);
-      return;
-    }
-
-    if (!data?.data) {
-      setSyncStatus("В базе пока нет данных по этому ключу");
-      return;
-    }
-
-    dispatchPlanning({ type: "hydrate", payload: data.data as Partial<PlanningState> });
-    setSyncStatus("Загружено из базы");
+    setSyncStatus(storage.isCloudConfigured ? "Загружаю из Supabase…" : "Supabase не настроен, загружаю локальную копию…");
+    const result = await storage.load(syncKey, initialPlanningState);
+    dispatchPlanning({ type: "hydrate", payload: result.state });
+    setSyncStatus(result.message);
   };
 
   const shiftPlanDate = (days: number) => {
@@ -501,6 +598,30 @@ export default function TradeGateApp() {
 
   const updateCalculator = <K extends TradeCalculatorField>(field: K, value: TradeCalculatorState[K]) => {
     setCalculator((current) => ({ ...current, [field]: value }));
+  };
+
+  const closeTradingDay = () => {
+    const plansForDate = sessionPlans.filter((item) => item.planDate === activePlanDate);
+    if (plansForDate.length === 0) {
+      setSyncStatus("На выбранную дату нет сценариев для закрытия дня");
+      return;
+    }
+
+    const confirmed = window.confirm("Закрыть торговый день? Все сценарии выбранной даты будут перенесены в архив, а план переключится на следующий день.");
+    if (!confirmed) return;
+
+    const action: PlanningAction = { type: "close-trading-day", planDate: activePlanDate, nextPlanDate: getNextDateISO(activePlanDate) };
+    const nextPlanning = planningReducer(planning, action);
+    dispatchPlanning(action);
+    storage.save(nextPlanning).then((result) => setSyncStatus(`Торговый день закрыт. ${result.message}`));
+  };
+
+  const triggerEmergencyLock = () => {
+    const until = new Date();
+    until.setHours(until.getHours() + 2);
+    setRevenge(true);
+    setLockUntil(until.toISOString());
+    setSyncStatus("Экстренная блокировка включена на 2 часа");
   };
 
   const reset = () => {
@@ -544,14 +665,14 @@ export default function TradeGateApp() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <div className="mb-2 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-emerald-300/80 shadow-2xl backdrop-blur">
-                Prop Risk Control System
+                Система риск-контроля
               </div>
               <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Trade Gate</h1>
               <p className="mt-2 text-sm text-neutral-400">Личный терминал допуска к сделке: состояние · риск · план · дисциплина.</p>
             </div>
             <div className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-right shadow-2xl backdrop-blur md:block">
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Account Mode</div>
-              <div className="mt-1 text-lg font-semibold text-neutral-100">100K Challenge</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Режим аккаунта</div>
+              <div className="mt-1 text-lg font-semibold text-neutral-100">Челлендж 100K</div>
             </div>
           </div>
 
@@ -565,6 +686,36 @@ export default function TradeGateApp() {
         </motion.div>
 
         <RiskStatus result={riskResult} />
+
+        <PermissionCard permission={permission} />
+
+        <EmergencyCard
+          note={emergencyNote}
+          onNoteChange={(value) => dispatchPlanning({ type: "set-emergency-note", planDate: activePlanDate, value })}
+          onEmergency={triggerEmergencyLock}
+        />
+
+        <DailyRiskBudgetCard
+          budgetUsd={activeDailyRiskBudget.budgetUsd}
+          plannedRiskUsed={plannedRiskUsed}
+          remainingRisk={dailyRiskRemaining}
+          onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
+        />
+
+        <AccountSettingsCard
+          settings={accountSettings}
+          dailyLossUsed={propDailyLossUsed}
+          totalLossUsed={Math.max(propDailyLossUsed, Number(accountSettings.personalMaxLoss) > 0 ? propDailyLossUsed : 0)}
+          profitProgress={Math.max(0, Number(dailyPnl) || 0)}
+          onChange={(field, value) => dispatchPlanning({ type: "set-account-setting", field, value })}
+        />
+
+        <SetupPlaybookCard
+          setups={setups}
+          onAdd={(name, description, defaultInstrument) => dispatchPlanning({ type: "add-setup", name, description, defaultInstrument })}
+          onUpdate={(id, changes) => dispatchPlanning({ type: "update-setup", id, changes })}
+          onDelete={(id) => dispatchPlanning({ type: "delete-setup", id })}
+        />
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
@@ -599,7 +750,7 @@ export default function TradeGateApp() {
                   variant="outline"
                   className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
                 >
-                  Lock 2h
+                  Блокировка 2 часа
                 </Button>
                 <Button
                   type="button"
@@ -607,7 +758,7 @@ export default function TradeGateApp() {
                   variant="outline"
                   className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
                 >
-                  Unlock
+                  Снять блокировку
                 </Button>
               </div>
             </CardContent>
@@ -634,6 +785,9 @@ export default function TradeGateApp() {
                 <Button onClick={() => shiftPlanDate(1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
+                <Button onClick={closeTradingDay} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+                  Закрыть торговый день
+                </Button>
               </div>
             </div>
 
@@ -644,6 +798,7 @@ export default function TradeGateApp() {
                   idea={idea}
                   activePlanDate={activePlanDate}
                   plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
+                  setups={activeSetups}
                   instrumentImages={instrumentImages as PersistedImages}
                   marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
                   onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
@@ -661,6 +816,8 @@ export default function TradeGateApp() {
             </div>
           </CardContent>
         </Card>
+
+        <WeeklyReportCard report={weeklyReport} />
 
         <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
           <CardContent className="space-y-4 p-5">
@@ -690,13 +847,14 @@ export default function TradeGateApp() {
                     </div>
 
                     <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+                      <ArchiveField title="Сетап" value={getSetupName(setups, item.setupId, item.setupName)} />
                       <ArchiveField title="Триггер" value={item.trigger} />
                       <ArchiveField title="Стоп" value={item.stop} />
                       <ArchiveField title="Тейк" value={item.take} />
-                      <ArchiveField title="Финрезультат" value={item.finalResult ? `$${item.finalResult}` : "—"} />
                     </div>
 
-                    <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                    <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+                      <ArchiveField title="Финрезультат" value={item.finalResult ? `$${item.finalResult}` : "—"} />
                       <ArchiveField title="Итог" value={RESULT_STATUS_LABELS[item.resultStatus] ?? item.resultStatus} />
                       <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[item.technical] ?? item.technical} />
                       <ArchiveField title="Отмена сценария" value={item.note || "—"} />

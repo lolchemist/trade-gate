@@ -15,7 +15,7 @@ export function CloudSync({
 }) {
   return (
     <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-xl backdrop-blur">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">Cloud Sync</div>
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">Синхронизация</div>
       <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
         <input
           value={syncKey}

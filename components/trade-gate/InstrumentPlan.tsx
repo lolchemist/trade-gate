@@ -3,12 +3,13 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey } from "./utils";
-import type { EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan } from "./types";
+import type { EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
 
 export function InstrumentPlan({
   idea,
   activePlanDate,
   plans,
+  setups,
   instrumentImages,
   marketIdeaNotes,
   onAddScenario,
@@ -21,6 +22,7 @@ export function InstrumentPlan({
   idea: MarketIdea;
   activePlanDate: string;
   plans: SessionPlan[];
+  setups: Setup[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   onAddScenario: (symbol: string) => void;
@@ -99,6 +101,7 @@ export function InstrumentPlan({
               key={item.id}
               item={item}
               index={index}
+              setups={setups}
               onUpdate={onUpdatePlan}
               onArchive={onArchivePlan}
               onRemove={onRemovePlan}
