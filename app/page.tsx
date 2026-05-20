@@ -83,12 +83,13 @@ export default function TradeGateApp() {
   const revenge = planning.emergencyLock.revenge;
   const lockUntil = planning.emergencyLock.lockUntil;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
-  const activeSetups = getActiveSetups(setups);
-  const activeDailyRiskBudget = getDailyRiskBudget(dailyRiskBudgets, activePlanDate);
-  const plannedRiskUsed = calculatePlannedRisk(sessionPlans, activePlanDate);
+  const activeSetups = useMemo(() => getActiveSetups(setups), [setups]);
+  const activeDailyRiskBudget = useMemo(() => getDailyRiskBudget(dailyRiskBudgets, activePlanDate), [dailyRiskBudgets, activePlanDate]);
+  const plannedRiskUsed = useMemo(() => calculatePlannedRisk(sessionPlans, activePlanDate), [sessionPlans, activePlanDate]);
   const dailyRiskRemaining = (Number(activeDailyRiskBudget.budgetUsd) || 0) - plannedRiskUsed;
   const emergencyNote = emergencyNotes[activePlanDate] ?? "";
-  const personalDailyStopHit = Number(dailyPnl) <= -(Number(accountSettings.personalDailyStop) || 0) || Number(dailyLoss) <= -(Number(accountSettings.personalDailyStop) || 0);
+  const personalDailyStopLimit = Number(accountSettings.personalDailyStop) || 0;
+  const personalDailyStopHit = personalDailyStopLimit > 0 && (Number(dailyPnl) <= -personalDailyStopLimit || Number(dailyLoss) <= -personalDailyStopLimit);
   const propDailyLossUsed = Math.max(Math.abs(Math.min(Number(dailyPnl) || 0, Number(dailyLoss) || 0, 0)), 0);
   const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;
   const propDailyLossClose = propDailyLossLimit > 0 && propDailyLossUsed >= propDailyLossLimit * 0.8;
@@ -400,7 +401,7 @@ export default function TradeGateApp() {
                   ))}
                 </div>
 
-                <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
+                <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-300">
                   Готовых сценариев на выбранную дату: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
                 </div>
               </CardContent>
@@ -442,13 +443,13 @@ export default function TradeGateApp() {
               <CardContent className="space-y-4 p-5">
                 <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив торговых планов" />
                 {archivedPlans.length === 0 ? (
-                  <div className="rounded-xl bg-neutral-100 px-3 py-3 text-sm text-neutral-600">
+                  <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-500">
                     Архив пока пуст. После сессии заполни итог и нажми “В архив”.
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {archivedPlans.map((item: ArchivedPlan) => (
-                      <div key={item.id} className="rounded-2xl border bg-white p-4">
+                      <div key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="font-semibold">
@@ -479,7 +480,7 @@ export default function TradeGateApp() {
                           <ArchiveField title="Отмена сценария" value={item.note || "—"} />
                         </div>
 
-                        {item.archiveComment && <div className="mt-3 rounded-xl bg-neutral-100 p-3 text-sm text-neutral-700">{item.archiveComment}</div>}
+                        {item.archiveComment && <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300">{item.archiveComment}</div>}
                       </div>
                     ))}
                   </div>
@@ -546,7 +547,7 @@ export default function TradeGateApp() {
                   <Rule title="Риск на сделку" value="0.25–0.5%" />
                   <Rule title="Максимум сделок" value="1–2 идеи" />
                 </div>
-                <p className="mt-4 text-sm text-neutral-600">Если статус красный — не спорить с приложением. Это не рекомендация, а запрет на торговлю.</p>
+                <p className="mt-4 text-sm text-neutral-500">Если статус красный — не спорить с приложением. Это не рекомендация, а запрет на торговлю.</p>
               </CardContent>
             </Card>
 

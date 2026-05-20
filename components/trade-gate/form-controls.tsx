@@ -166,14 +166,14 @@ export function Rule({ title, value }: { title: string; value: string }) {
 }
 
 export function Warning({ text }: { text: string }) {
-  return <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{text}</div>;
+  return <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{text}</div>;
 }
 
 export function ArchiveField({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-xl bg-neutral-100 p-3">
+    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
       <div className="text-xs uppercase tracking-wide text-neutral-500">{title}</div>
-      <div className="mt-1 font-medium">{value}</div>
+      <div className="mt-1 font-medium text-neutral-100">{value}</div>
     </div>
   );
 }

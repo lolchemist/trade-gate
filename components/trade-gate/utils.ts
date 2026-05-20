@@ -12,6 +12,8 @@ export function getInitialPlanDate() {
 }
 
 export function formatPlanDate(isoDate: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate || "—";
+
   const months = [
     "января",
     "февраля",
@@ -28,7 +30,9 @@ export function formatPlanDate(isoDate: string) {
   ];
 
   const [year, month, day] = isoDate.split("-");
-  return `${Number(day)} ${months[Number(month) - 1]} ${year}`;
+  const monthLabel = months[Number(month) - 1];
+
+  return monthLabel ? `${Number(day)} ${monthLabel} ${year}` : isoDate;
 }
 
 export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date.now(), setup?: Setup): SessionPlan {
@@ -315,7 +319,7 @@ export function calculateTradeMath({
   const pointValue = Number(dollarsPerPointPerLot);
   const stopDistance = Math.abs(entry - stop);
   const takeDistance = Math.abs(take - entry);
-  const lots = stopDistance > 0 && pointValue > 0 ? risk / (stopDistance * pointValue) : 0;
+  const lots = stopDistance > 0 && pointValue > 0 && risk > 0 ? risk / (stopDistance * pointValue) : 0;
   const rewardDollars = lots * takeDistance * pointValue;
   const rr = stopDistance > 0 ? takeDistance / stopDistance : 0;
   const stopValid = direction === "long" ? stop < entry : stop > entry;
@@ -329,7 +333,7 @@ export function calculateTradeMath({
     rr,
     stopValid,
     takeValid,
-    valid: stopDistance > 0 && takeDistance > 0 && stopValid && takeValid && entryReason.trim().length > 8,
+    valid: stopDistance > 0 && takeDistance > 0 && risk > 0 && pointValue > 0 && stopValid && takeValid && entryReason.trim().length > 8,
   };
 }
 

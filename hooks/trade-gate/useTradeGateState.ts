@@ -1,5 +1,5 @@
 import { useReducer } from "react";
-import { DEFAULT_SETUPS } from "@/constants/trade-gate";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS } from "@/constants/trade-gate";
 import { createCustomSetup, createSessionPlan, getInitialPlanDate, getPreferredSetup, getSetupName } from "@/components/trade-gate/utils";
 import type { AccountSettings, ArchivedPlan, EditablePlanField, PlanningState, SessionPlan, Setup, TradeCalculatorState } from "@/types/trade-gate";
 
@@ -12,14 +12,7 @@ export const initialPlanningState: PlanningState = {
   instrumentImages: {},
   marketIdeaNotes: {},
   dailyRiskBudgets: {},
-  accountSettings: {
-    accountSize: "100000",
-    propDailyLossLimit: "5000",
-    personalDailyStop: "1000",
-    maxLossLimit: "10000",
-    personalMaxLoss: "3000",
-    profitTarget: "10000",
-  },
+  accountSettings: DEFAULT_ACCOUNT_SETTINGS,
   emergencyNotes: {},
   emergencyLock: {
     revenge: false,

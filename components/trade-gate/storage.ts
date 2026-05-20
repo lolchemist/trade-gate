@@ -115,21 +115,22 @@ export function createTradeGateStorage(config: StorageConfig) {
       };
     },
     async save(state: PlanningState): Promise<StorageSaveResult> {
-      const now = new Date().toISOString();
-      const normalizedState = normalizePlanningState({ ...state, lastUpdatedAt: now });
+      const currentState = normalizePlanningState(state);
 
       if (supabase) {
-        const conflict = await getCloudConflict(supabase, normalizedState.syncKey, state.lastUpdatedAt);
+        const conflict = await getCloudConflict(supabase, currentState.syncKey, currentState.lastUpdatedAt);
         if (conflict) {
-          writeLocalState(normalizedState);
+          writeLocalState(currentState);
           return {
             source: "localStorage",
             message: conflict,
-            state: normalizedState,
+            state: currentState,
             status: "Sync error",
           };
         }
 
+        const now = new Date().toISOString();
+        const normalizedState = normalizePlanningState({ ...currentState, lastUpdatedAt: now });
         const { error } = await supabase.from(TABLE_NAME).upsert(
           {
             user_key: normalizedState.syncKey,
@@ -158,6 +159,8 @@ export function createTradeGateStorage(config: StorageConfig) {
         };
       }
 
+      const now = new Date().toISOString();
+      const normalizedState = normalizePlanningState({ ...currentState, lastUpdatedAt: now });
       writeLocalState(normalizedState);
       return {
         source: "localStorage",

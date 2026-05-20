@@ -242,6 +242,8 @@ function calculateRiskStatus({
     if (!tradeMath.takeValid) reasons.push("тейк в плане конкретной сделки стоит с неправильной стороны");
     if (tradeMath.stopDistance <= 0) reasons.push("не заполнена дистанция до стопа в плане конкретной сделки");
     if (tradeMath.takeDistance <= 0) reasons.push("не заполнена дистанция до тейка в плане конкретной сделки");
+    if ((Number(calculator.riskDollars) || 0) <= 0) reasons.push("риск в калькуляторе сделки должен быть больше нуля");
+    if ((Number(calculator.dollarsPerPointPerLot) || 0) <= 0) reasons.push("стоимость пункта в калькуляторе должна быть больше нуля");
   }
 
   if (sessionPlanReadyCount === 0) {
