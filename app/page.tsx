@@ -102,8 +102,21 @@ export default function TradeGateApp() {
 
   const [archivedPlans, setArchivedPlans] = useState([]);
   const [instrumentImages, setInstrumentImages] = useState({});
+  const [marketIdeaNotes, setMarketIdeaNotes] = useState({});
 
   const getInstrumentImageKey = (date, symbol) => `${date}:${symbol}`;
+  const getMarketIdeaKey = (date, symbol, field) => `${date}:${symbol}:${field}`;
+
+  const getMarketIdeaText = (idea, field) => {
+    return marketIdeaNotes[getMarketIdeaKey(activePlanDate, idea.symbol, field)] ?? idea[field];
+  };
+
+  const updateMarketIdeaText = (symbol, field, value) => {
+    setMarketIdeaNotes((notes) => ({
+      ...notes,
+      [getMarketIdeaKey(activePlanDate, symbol, field)]: value,
+    }));
+  };
 
   useEffect(() => {
     try {
@@ -113,6 +126,7 @@ export default function TradeGateApp() {
         if (parsed.sessionPlans) setSessionPlans(parsed.sessionPlans);
         if (parsed.archivedPlans) setArchivedPlans(parsed.archivedPlans);
         if (parsed.instrumentImages) setInstrumentImages(parsed.instrumentImages);
+        if (parsed.marketIdeaNotes) setMarketIdeaNotes(parsed.marketIdeaNotes);
         if (parsed.activePlanDate) setActivePlanDate(parsed.activePlanDate);
         if (parsed.syncKey) setSyncKey(parsed.syncKey);
       }
@@ -133,6 +147,7 @@ export default function TradeGateApp() {
           sessionPlans,
           archivedPlans,
           instrumentImages,
+          marketIdeaNotes,
           activePlanDate,
           syncKey,
         })
@@ -140,12 +155,13 @@ export default function TradeGateApp() {
     } catch (error) {
       console.error("Failed to save Trade Gate state", error);
     }
-  }, [isHydrated, sessionPlans, archivedPlans, instrumentImages, activePlanDate, syncKey]);
+  }, [isHydrated, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, activePlanDate, syncKey]);
 
   const cloudPayload = useMemo(() => ({
     sessionPlans,
     archivedPlans,
     instrumentImages,
+    marketIdeaNotes,
     activePlanDate,
   }), [sessionPlans, archivedPlans, instrumentImages, activePlanDate]);
 
@@ -198,6 +214,7 @@ export default function TradeGateApp() {
     if (data.data.sessionPlans) setSessionPlans(data.data.sessionPlans);
     if (data.data.archivedPlans) setArchivedPlans(data.data.archivedPlans);
     if (data.data.instrumentImages) setInstrumentImages(data.data.instrumentImages);
+    if (data.data.marketIdeaNotes) setMarketIdeaNotes(data.data.marketIdeaNotes);
     if (data.data.activePlanDate) setActivePlanDate(data.data.activePlanDate);
 
     setSyncStatus("Загружено из базы");
@@ -606,19 +623,29 @@ export default function TradeGateApp() {
                           </Button>
                         </div>
 
-                        <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300">
-                          {idea.bias}
-                        </div>
+                        <label className="mt-4 block">
+                          <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Идея / bias</div>
+                          <textarea
+                            value={getMarketIdeaText(idea, "bias")}
+                            onChange={(e) => updateMarketIdeaText(idea.symbol, "bias", e.target.value)}
+                            className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                          />
+                        </label>
 
-                        <div className="mt-3 text-sm text-neutral-500">
-                          {idea.scenario}
-                        </div>
+                        <label className="mt-3 block">
+                          <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Альтернативный сценарий / отмена</div>
+                          <textarea
+                            value={getMarketIdeaText(idea, "scenario")}
+                            onChange={(e) => updateMarketIdeaText(idea.symbol, "scenario", e.target.value)}
+                            className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-500 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                          />
+                        </label>
                       </div>
 
                       <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
                         <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Картинка / график</div>
-                        {instrumentImages[idea.symbol] ? (
-                          <img src={instrumentImages[idea.symbol]} alt={`chart ${idea.symbol}`} className="h-36 w-full rounded-xl object-cover" />
+                        {instrumentImages[getInstrumentImageKey(activePlanDate, idea.symbol)] ? (
+                          <img src={instrumentImages[getInstrumentImageKey(activePlanDate, idea.symbol)]} alt={`chart ${idea.symbol}`} className="h-36 w-full rounded-xl object-cover" />
                         ) : (
                           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/10 text-center text-xs text-neutral-600">
                             Прикрепи скрин графика<br />для этого инструмента
