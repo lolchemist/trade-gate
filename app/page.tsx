@@ -1,138 +1,180 @@
 "use client";
-// @ts-nocheck
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
+import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Shield, Timer, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CloudSync } from "@/components/trade-gate/CloudSync";
+import { InstrumentPlan } from "@/components/trade-gate/InstrumentPlan";
+import { RiskStatus } from "@/components/trade-gate/RiskStatus";
+import { TradeCalculator } from "@/components/trade-gate/TradeCalculator";
+import { LOSS_LIMIT, MARKET_IDEAS, RESULT_STATUS_LABELS, STORAGE_KEY, TECHNICAL_STATUS_LABELS } from "@/components/trade-gate/constants";
+import { ArchiveField, NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
+import {
+  calculateTradeMath,
+  createSessionPlan,
+  formatPlanDate,
+  getDateISO,
+  getInitialPlanDate,
+  getInstrumentImageKey,
+  getMarketIdeaKey,
+  isPlanReady,
+} from "@/components/trade-gate/utils";
+import type {
+  ArchivedPlan,
+  CloudPayload,
+  EditablePlanField,
+  GateResult,
+  MarketIdeaField,
+  MarketIdeaNotes,
+  PersistedImages,
+  PlanningState,
+  ReadinessScores,
+  SessionPlan,
+  TradeCalculatorField,
+  TradeCalculatorState,
+} from "@/components/trade-gate/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const initialPlanDate = getInitialPlanDate();
+
+const initialPlanningState: PlanningState = {
+  sessionPlans: [createSessionPlan(initialPlanDate, "BCOUSD", 1)],
+  archivedPlans: [],
+  instrumentImages: {},
+  marketIdeaNotes: {},
+  activePlanDate: initialPlanDate,
+  syncKey: "nataliia-main",
+};
+
+const initialCalculatorState: TradeCalculatorState = {
+  symbol: "BCOUSD",
+  direction: "long",
+  entryReason: "",
+  entryPrice: 85,
+  stopPrice: 84.6,
+  takePrice: 86,
+  riskDollars: 500,
+  dollarsPerPointPerLot: 1000,
+};
+
+type PlanningAction =
+  | { type: "hydrate"; payload: Partial<PlanningState> }
+  | { type: "set-active-date"; activePlanDate: string }
+  | { type: "set-sync-key"; syncKey: string }
+  | { type: "add-plan"; symbol: string }
+  | { type: "update-plan"; id: number; field: EditablePlanField; value: SessionPlan[EditablePlanField] }
+  | { type: "remove-plan"; id: number }
+  | { type: "archive-plan"; id: number }
+  | { type: "restore-plan"; id: number }
+  | { type: "set-instrument-image"; key: string; value: string }
+  | { type: "set-market-idea-note"; key: string; value: string }
+  | { type: "reset-session"; activePlanDate: string };
+
+function planningReducer(state: PlanningState, action: PlanningAction): PlanningState {
+  switch (action.type) {
+    case "hydrate":
+      return {
+        ...state,
+        sessionPlans: action.payload.sessionPlans ?? state.sessionPlans,
+        archivedPlans: action.payload.archivedPlans ?? state.archivedPlans,
+        instrumentImages: action.payload.instrumentImages ?? state.instrumentImages,
+        marketIdeaNotes: action.payload.marketIdeaNotes ?? state.marketIdeaNotes,
+        activePlanDate: action.payload.activePlanDate ?? state.activePlanDate,
+        syncKey: action.payload.syncKey ?? state.syncKey,
+      };
+    case "set-active-date":
+      return { ...state, activePlanDate: action.activePlanDate };
+    case "set-sync-key":
+      return { ...state, syncKey: action.syncKey };
+    case "add-plan":
+      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol)] };
+    case "update-plan":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id ? ({ ...plan, [action.field]: action.value } as SessionPlan) : plan)),
+      };
+    case "remove-plan":
+      return { ...state, sessionPlans: state.sessionPlans.filter((plan) => plan.id !== action.id) };
+    case "archive-plan": {
+      const planToArchive = state.sessionPlans.find((plan) => plan.id === action.id);
+      if (!planToArchive) return state;
+
+      return {
+        ...state,
+        archivedPlans: [
+          {
+            ...planToArchive,
+            archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+          },
+          ...state.archivedPlans,
+        ],
+        sessionPlans: state.sessionPlans.filter((plan) => plan.id !== action.id),
+      };
+    }
+    case "restore-plan": {
+      const planToRestore = state.archivedPlans.find((plan) => plan.id === action.id);
+      if (!planToRestore) return state;
+
+      const restoredPlan: SessionPlan = { ...planToRestore };
+      delete (restoredPlan as SessionPlan & Partial<ArchivedPlan>).archivedAt;
+      return {
+        ...state,
+        sessionPlans: [restoredPlan, ...state.sessionPlans],
+        archivedPlans: state.archivedPlans.filter((plan) => plan.id !== action.id),
+      };
+    }
+    case "set-instrument-image":
+      return { ...state, instrumentImages: { ...state.instrumentImages, [action.key]: action.value } };
+    case "set-market-idea-note":
+      return { ...state, marketIdeaNotes: { ...state.marketIdeaNotes, [action.key]: action.value } };
+    case "reset-session":
+      return {
+        ...state,
+        sessionPlans: [createSessionPlan(action.activePlanDate, "BCOUSD", 1)],
+        archivedPlans: [],
+      };
+    default:
+      return state;
+  }
+}
 
 export default function TradeGateApp() {
   const supabase = useMemo(() => {
     if (!supabaseUrl || !supabaseAnonKey) return null;
     return createClient(supabaseUrl, supabaseAnonKey);
   }, []);
+
+  const [planning, dispatchPlanning] = useReducer(planningReducer, initialPlanningState);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
   const [sleep, setSleep] = useState(7);
   const [anxiety, setAnxiety] = useState(5);
   const [urge, setUrge] = useState(5);
   const [anger, setAnger] = useState(2);
-  const [dailyPnl, setDailyPnl] = useState(0);
-  const [lossLimit] = useState(-1000);
-  const [tradesToday, setTradesToday] = useState(0);
+  const [dailyPnl, setDailyPnl] = useState<string | number>(0);
+  const [tradesToday, setTradesToday] = useState<string | number>(0);
   const [plan, setPlan] = useState(false);
   const [newsChecked, setNewsChecked] = useState(false);
   const [stopSet, setStopSet] = useState(false);
   const [revenge, setRevenge] = useState(false);
-  const [dailyLoss, setDailyLoss] = useState("0");
-  const [consecutiveStops, setConsecutiveStops] = useState("0");
+  const [dailyLoss, setDailyLoss] = useState<string | number>("0");
+  const [consecutiveStops, setConsecutiveStops] = useState<string | number>("0");
   const [lockUntil, setLockUntil] = useState("");
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [syncKey, setSyncKey] = useState("nataliia-main");
-  const [syncStatus, setSyncStatus] = useState("");
+  const [calculator, setCalculator] = useState<TradeCalculatorState>(initialCalculatorState);
 
-  const [symbol, setSymbol] = useState("BCOUSD");
-  const [direction, setDirection] = useState("long");
-  const [entryReason, setEntryReason] = useState("");
-  const [entryPrice, setEntryPrice] = useState(85);
-  const [stopPrice, setStopPrice] = useState(84.6);
-  const [takePrice, setTakePrice] = useState(86);
-  const [riskDollars, setRiskDollars] = useState(500);
-  const [dollarsPerPointPerLot, setDollarsPerPointPerLot] = useState(1000);
-
-  const getDateISO = (date) => date.toISOString().slice(0, 10);
-  const initialPlanDate = (() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 1);
-    return getDateISO(date);
-  })();
-
-  const [activePlanDate, setActivePlanDate] = useState(initialPlanDate);
-
-  const formatPlanDate = (isoDate) => {
-    const months = [
-      "января",
-      "февраля",
-      "марта",
-      "апреля",
-      "мая",
-      "июня",
-      "июля",
-      "августа",
-      "сентября",
-      "октября",
-      "ноября",
-      "декабря",
-    ];
-
-    const [year, month, day] = isoDate.split("-");
-    return `${Number(day)} ${months[Number(month) - 1]} ${year}`;
-  };
-
+  const { sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, activePlanDate, syncKey } = planning;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
-
-  const shiftPlanDate = (days) => {
-    const date = new Date(`${activePlanDate}T12:00:00`);
-    date.setDate(date.getDate() + days);
-    setActivePlanDate(getDateISO(date));
-  };
-
-  const [sessionPlans, setSessionPlans] = useState([
-    {
-      id: 1,
-      planDate: activePlanDate,
-      symbol: "BCOUSD",
-      direction: "long",
-      entryZone: "",
-      trigger: "",
-      stop: "",
-      take: "",
-      note: "",
-      resultStatus: "not_taken",
-      technical: "yes",
-      finalResult: "",
-      archiveComment: "",
-      tradeEntry: "",
-      tradeStop: "",
-      tradeTake: "",
-      tradeRisk: "500",
-      tradePointValue: "1000",
-      entryReason: "",
-    },
-  ]);
-
-  const [archivedPlans, setArchivedPlans] = useState([]);
-  const [instrumentImages, setInstrumentImages] = useState({});
-  const [marketIdeaNotes, setMarketIdeaNotes] = useState({});
-
-  const getInstrumentImageKey = (date, symbol) => `${date}:${symbol}`;
-  const getMarketIdeaKey = (date, symbol, field) => `${date}:${symbol}:${field}`;
-
-  const getMarketIdeaText = (idea, field) => {
-    return marketIdeaNotes[getMarketIdeaKey(activePlanDate, idea.symbol, field)] ?? idea[field];
-  };
-
-  const updateMarketIdeaText = (symbol, field, value) => {
-    setMarketIdeaNotes((notes) => ({
-      ...notes,
-      [getMarketIdeaKey(activePlanDate, symbol, field)]: value,
-    }));
-  };
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("trade-gate-state-v1");
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.sessionPlans) setSessionPlans(parsed.sessionPlans);
-        if (parsed.archivedPlans) setArchivedPlans(parsed.archivedPlans);
-        if (parsed.instrumentImages) setInstrumentImages(parsed.instrumentImages);
-        if (parsed.marketIdeaNotes) setMarketIdeaNotes(parsed.marketIdeaNotes);
-        if (parsed.activePlanDate) setActivePlanDate(parsed.activePlanDate);
-        if (parsed.syncKey) setSyncKey(parsed.syncKey);
+        dispatchPlanning({ type: "hydrate", payload: JSON.parse(saved) as Partial<PlanningState> });
       }
     } catch (error) {
       console.error("Failed to load saved Trade Gate state", error);
@@ -145,218 +187,46 @@ export default function TradeGateApp() {
     if (!isHydrated) return;
 
     try {
-      localStorage.setItem(
-        "trade-gate-state-v1",
-        JSON.stringify({
-          sessionPlans,
-          archivedPlans,
-          instrumentImages,
-          marketIdeaNotes,
-          activePlanDate,
-          syncKey,
-        })
-      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(planning));
     } catch (error) {
       console.error("Failed to save Trade Gate state", error);
     }
-  }, [isHydrated, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, activePlanDate, syncKey]);
+  }, [isHydrated, planning]);
 
-  const cloudPayload = useMemo(() => ({
-    sessionPlans,
-    archivedPlans,
-    instrumentImages,
-    marketIdeaNotes,
-    activePlanDate,
-  }), [sessionPlans, archivedPlans, instrumentImages, activePlanDate]);
+  const cloudPayload: CloudPayload = useMemo(
+    () => ({
+      sessionPlans,
+      archivedPlans,
+      instrumentImages,
+      marketIdeaNotes,
+      activePlanDate,
+    }),
+    [sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, activePlanDate]
+  );
 
-  const saveToCloud = async () => {
-    if (!supabase) {
-      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
-      return;
-    }
+  const tradeMath = useMemo(() => calculateTradeMath(calculator), [calculator]);
 
-    setSyncStatus("Сохраняю в базу…");
-    const { error } = await supabase
-      .from("trade_gate_state")
-      .upsert({
-        user_key: syncKey,
-        data: cloudPayload,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_key" });
+  const sessionPlanReadyCount = useMemo(
+    () => sessionPlans.filter((item) => item.planDate === activePlanDate && isPlanReady(item)).length,
+    [sessionPlans, activePlanDate]
+  );
 
-    if (error) {
-      setSyncStatus(`Ошибка сохранения: ${error.message}`);
-      return;
-    }
-
-    setSyncStatus("Сохранено в базе");
-  };
-
-  const loadFromCloud = async () => {
-    if (!supabase) {
-      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
-      return;
-    }
-
-    setSyncStatus("Загружаю из базы…");
-    const { data, error } = await supabase
-      .from("trade_gate_state")
-      .select("data")
-      .eq("user_key", syncKey)
-      .maybeSingle();
-
-    if (error) {
-      setSyncStatus(`Ошибка загрузки: ${error.message}`);
-      return;
-    }
-
-    if (!data?.data) {
-      setSyncStatus("В базе пока нет данных по этому ключу");
-      return;
-    }
-
-    if (data.data.sessionPlans) setSessionPlans(data.data.sessionPlans);
-    if (data.data.archivedPlans) setArchivedPlans(data.data.archivedPlans);
-    if (data.data.instrumentImages) setInstrumentImages(data.data.instrumentImages);
-    if (data.data.marketIdeaNotes) setMarketIdeaNotes(data.data.marketIdeaNotes);
-    if (data.data.activePlanDate) setActivePlanDate(data.data.activePlanDate);
-
-    setSyncStatus("Загружено из базы");
-  };
-
-  const handleInstrumentImage = (symbol, file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setInstrumentImages((images) => ({ ...images, [getInstrumentImageKey(activePlanDate, symbol)]: reader.result }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowISO = getDateISO(tomorrow);
-
-  const marketIdeas = [
-    {
-      symbol: "BCOUSD",
-      title: "Нефть",
-      bias: "Приоритет long выше 86 при удержании импульса",
-      scenario: "Шорт только если будет агрессивный слив под локальный range low",
-    },
-    {
-      symbol: "XAUUSD",
-      title: "Золото",
-      bias: "Следить за реакцией на новости и удержанием дневного тренда",
-      scenario: "Лучше торговать только после подтверждения объёмом",
-    },
-    {
-      symbol: "COCOA",
-      title: "Какао",
-      bias: "Высокая волатильность — только минимальный риск",
-      scenario: "Интересен breakout после накопления",
-    },
-  ];
-
-  const addSessionPlan = (symbol = "BCOUSD") => {
-    setSessionPlans((plans) => [
-      ...plans,
-      {
-        id: Date.now(),
-        planDate: activePlanDate,
-        symbol,
-        direction: "long",
-        entryZone: "",
-        trigger: "",
-        stop: "",
-        take: "",
-        note: "",
-        resultStatus: "not_taken",
-        technical: "yes",
-        finalResult: "",
-        archiveComment: "",
-      tradeEntry: "",
-      tradeStop: "",
-      tradeTake: "",
-      tradeRisk: "500",
-      tradePointValue: "1000",
-      },
-    ]);
-  };
-
-  const updateSessionPlan = (id, field, value) => {
-    setSessionPlans((plans) => plans.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
-  };
-
-  const removeSessionPlan = (id) => {
-    setSessionPlans((plans) => plans.filter((p) => p.id !== id));
-  };
-
-  const archiveSessionPlan = (id) => {
-    const planToArchive = sessionPlans.find((p) => p.id === id);
-    if (!planToArchive) return;
-
-    setArchivedPlans((plans) => [
-      {
-        ...planToArchive,
-        archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
-      },
-      ...plans,
-    ]);
-    setSessionPlans((plans) => plans.filter((p) => p.id !== id));
-  };
-
-  const restoreArchivedPlan = (id) => {
-    const planToRestore = archivedPlans.find((p) => p.id === id);
-    if (!planToRestore) return;
-
-    const { archivedAt, ...restoredPlan } = planToRestore;
-    setSessionPlans((plans) => [restoredPlan, ...plans]);
-    setArchivedPlans((plans) => plans.filter((p) => p.id !== id));
-  };
-
-  const sessionPlanReadyCount = useMemo(() => {
-    return sessionPlans.filter((p) => p.planDate === activePlanDate && p.symbol && p.direction && p.entryZone && p.trigger && p.stop && p.take).length;
-  }, [sessionPlans, activePlanDate]);
-
-  const tradeMath = useMemo(() => {
-    const stopDistance = Math.abs(Number(entryPrice) - Number(stopPrice));
-    const takeDistance = Math.abs(Number(takePrice) - Number(entryPrice));
-    const lots = stopDistance > 0 && dollarsPerPointPerLot > 0 ? riskDollars / (stopDistance * dollarsPerPointPerLot) : 0;
-    const rewardDollars = lots * takeDistance * dollarsPerPointPerLot;
-    const rr = stopDistance > 0 ? takeDistance / stopDistance : 0;
-
-    const stopValid = direction === "long" ? stopPrice < entryPrice : stopPrice > entryPrice;
-    const takeValid = direction === "long" ? takePrice > entryPrice : takePrice < entryPrice;
-
-    return {
-      stopDistance,
-      takeDistance,
-      lots,
-      rewardDollars,
-      rr,
-      stopValid,
-      takeValid,
-      valid: stopDistance > 0 && takeDistance > 0 && stopValid && takeValid && entryReason.trim().length > 8,
-    };
-  }, [entryPrice, stopPrice, takePrice, riskDollars, dollarsPerPointPerLot, direction, entryReason]);
-
-  const result = useMemo(() => {
+  const riskResult = useMemo<GateResult>(() => {
     let riskScore = 0;
-    const reasons = [];
-    const warnings = [];
-
-    const readiness = {
+    const reasons: string[] = [];
+    const warnings: string[] = [];
+    const readiness: ReadinessScores = {
       execution: 100,
       emotional: 100,
       discipline: 100,
     };
 
     const now = new Date();
-    const isLocked = lockUntil && new Date(lockUntil) > now;
+    const isLocked = Boolean(lockUntil && new Date(lockUntil) > now);
     const dailyPnlNumber = Number(dailyPnl);
     const dailyLossNumber = Number(dailyLoss);
     const stopsNumber = Number(consecutiveStops);
+    const tradesTodayNumber = Number(tradesToday);
 
     if (isLocked) {
       riskScore += 100;
@@ -390,7 +260,7 @@ export default function TradeGateApp() {
       reasons.push("злость / раздражение: риск revenge trading");
     }
 
-    if (dailyPnlNumber <= lossLimit) {
+    if (dailyPnlNumber <= LOSS_LIMIT) {
       riskScore += 50;
       readiness.discipline -= 50;
       reasons.push("дневной лимит убытка достигнут по PnL");
@@ -402,7 +272,7 @@ export default function TradeGateApp() {
       reasons.push("дневной убыток ниже -1000$: торговля должна быть остановлена");
     }
 
-    if (tradesToday >= 3) {
+    if (tradesTodayNumber >= 3) {
       riskScore += 3;
       readiness.discipline -= 15;
       reasons.push("слишком много сделок за день: 3 или больше");
@@ -443,7 +313,7 @@ export default function TradeGateApp() {
     if (!tradeMath.valid) {
       riskScore += 5;
       readiness.execution -= 20;
-      if (!entryReason || entryReason.trim().length <= 8) reasons.push("в плане конкретной сделки нет нормальной причины входа");
+      if (!calculator.entryReason || calculator.entryReason.trim().length <= 8) reasons.push("в плане конкретной сделки нет нормальной причины входа");
       if (!tradeMath.stopValid) reasons.push("стоп в плане конкретной сделки стоит с неправильной стороны");
       if (!tradeMath.takeValid) reasons.push("тейк в плане конкретной сделки стоит с неправильной стороны");
       if (tradeMath.stopDistance <= 0) reasons.push("не заполнена дистанция до стопа в плане конкретной сделки");
@@ -469,7 +339,7 @@ export default function TradeGateApp() {
         (anger >= 6 ? 15 : 0) +
         (stopsNumber >= 2 ? 15 : 0) +
         (dailyPnlNumber < 0 ? 10 : 0) +
-        (tradesToday >= 3 ? 15 : 0)
+        (tradesTodayNumber >= 3 ? 15 : 0)
     );
 
     if (revengeDetectorScore >= 60) {
@@ -484,7 +354,7 @@ export default function TradeGateApp() {
     readiness.emotional = Math.max(0, Math.min(100, Math.round(readiness.emotional)));
     readiness.discipline = Math.max(0, Math.min(100, Math.round(readiness.discipline)));
 
-    const hardLock = isLocked || dailyPnlNumber <= lossLimit || dailyLossNumber <= -1000 || revenge || !stopSet || !tradeMath.valid || stopsNumber >= 3;
+    const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || revenge || !stopSet || !tradeMath.valid || stopsNumber >= 3;
 
     if (hardLock) {
       return {
@@ -535,16 +405,103 @@ export default function TradeGateApp() {
       readiness,
       revengeDetectorScore,
     };
-  }, [sleep, anxiety, urge, anger, dailyPnl, dailyLoss, consecutiveStops, lockUntil, lossLimit, tradesToday, plan, newsChecked, stopSet, revenge, tradeMath, sessionPlanReadyCount, activePlanDateLabel]);
+  }, [
+    sleep,
+    anxiety,
+    urge,
+    anger,
+    dailyPnl,
+    dailyLoss,
+    consecutiveStops,
+    lockUntil,
+    tradesToday,
+    plan,
+    newsChecked,
+    stopSet,
+    revenge,
+    tradeMath,
+    calculator.entryReason,
+    sessionPlanReadyCount,
+    activePlanDateLabel,
+  ]);
 
-  const statusStyle = {
-    OK: "bg-emerald-500/10 border-emerald-400/30 text-emerald-200 shadow-emerald-500/10",
-    CAUTION: "bg-amber-500/10 border-amber-400/30 text-amber-200 shadow-amber-500/10",
-    DANGER: "bg-orange-500/10 border-orange-400/30 text-orange-200 shadow-orange-500/10",
-    LOCKED: "bg-red-500/10 border-red-400/30 text-red-200 shadow-red-500/10",
-  }[result.status];
+  const saveToCloud = async () => {
+    if (!supabase) {
+      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
+      return;
+    }
 
-  const StatusIcon = result.status === "OK" ? CheckCircle2 : result.status === "LOCKED" ? Lock : AlertTriangle;
+    setSyncStatus("Сохраняю в базу…");
+    const { error } = await supabase
+      .from("trade_gate_state")
+      .upsert(
+        {
+          user_key: syncKey,
+          data: cloudPayload,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_key" }
+      );
+
+    if (error) {
+      setSyncStatus(`Ошибка сохранения: ${error.message}`);
+      return;
+    }
+
+    setSyncStatus("Сохранено в базе");
+  };
+
+  const loadFromCloud = async () => {
+    if (!supabase) {
+      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
+      return;
+    }
+
+    setSyncStatus("Загружаю из базы…");
+    const { data, error } = await supabase.from("trade_gate_state").select("data").eq("user_key", syncKey).maybeSingle();
+
+    if (error) {
+      setSyncStatus(`Ошибка загрузки: ${error.message}`);
+      return;
+    }
+
+    if (!data?.data) {
+      setSyncStatus("В базе пока нет данных по этому ключу");
+      return;
+    }
+
+    dispatchPlanning({ type: "hydrate", payload: data.data as Partial<PlanningState> });
+    setSyncStatus("Загружено из базы");
+  };
+
+  const shiftPlanDate = (days: number) => {
+    const date = new Date(`${activePlanDate}T12:00:00`);
+    date.setDate(date.getDate() + days);
+    dispatchPlanning({ type: "set-active-date", activePlanDate: getDateISO(date) });
+  };
+
+  const updateSessionPlan = <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => {
+    dispatchPlanning({ type: "update-plan", id, field, value });
+  };
+
+  const updateMarketIdeaText = (symbol: string, field: MarketIdeaField, value: string) => {
+    dispatchPlanning({ type: "set-market-idea-note", key: getMarketIdeaKey(activePlanDate, symbol, field), value });
+  };
+
+  const handleInstrumentImage = (symbol: string, file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        dispatchPlanning({ type: "set-instrument-image", key: getInstrumentImageKey(activePlanDate, symbol), value: reader.result });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const updateCalculator = <K extends TradeCalculatorField>(field: K, value: TradeCalculatorState[K]) => {
+    setCalculator((current) => ({ ...current, [field]: value }));
+  };
 
   const reset = () => {
     setSleep(7);
@@ -557,35 +514,22 @@ export default function TradeGateApp() {
     setNewsChecked(false);
     setStopSet(false);
     setRevenge(false);
-    setEntryReason("");
-    setEntryPrice(85);
-    setStopPrice(84.6);
-    setTakePrice(86);
-    setRiskDollars(500);
-    setSessionPlans([
-      {
-        id: 1,
-        planDate: activePlanDate,
-        symbol: "BCOUSD",
-        direction: "long",
-        entryZone: "",
-        trigger: "",
-        stop: "",
-        take: "",
-        note: "",
-        resultStatus: "not_taken",
-        technical: "yes",
-        finalResult: "",
-        archiveComment: "",
-      tradeEntry: "",
-      tradeStop: "",
-      tradeTake: "",
-      tradeRisk: "500",
-      tradePointValue: "1000",
-      },
-    ]);
-    setArchivedPlans([]);
+    setDailyLoss("0");
+    setConsecutiveStops("0");
+    setLockUntil("");
+    setCalculator(initialCalculatorState);
+    dispatchPlanning({ type: "reset-session", activePlanDate });
   };
+
+  if (!isHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#07080b] p-4 text-neutral-100">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-neutral-400 shadow-2xl backdrop-blur-xl">
+          Trade Gate загружается…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#07080b] p-4 text-neutral-100">
@@ -594,6 +538,7 @@ export default function TradeGateApp() {
         <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
         <div className="absolute left-0 top-1/3 h-80 w-80 rounded-full bg-red-500/10 blur-3xl" />
       </div>
+
       <div className="relative mx-auto max-w-5xl space-y-5">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-end justify-between gap-4">
@@ -610,82 +555,16 @@ export default function TradeGateApp() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-xl backdrop-blur">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
-              Cloud Sync
-            </div>
-            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-              <input
-                value={syncKey}
-                onChange={(e) => setSyncKey(e.target.value)}
-                placeholder="Ключ синхронизации, например nataliia-main"
-                className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-              />
-              <Button onClick={loadFromCloud} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-                Загрузить
-              </Button>
-              <Button onClick={saveToCloud} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
-                Сохранить
-              </Button>
-            </div>
-            {syncStatus && <div className="mt-2 text-sm text-neutral-400">{syncStatus}</div>}
-          </div>
+          <CloudSync
+            syncKey={syncKey}
+            syncStatus={syncStatus}
+            onSyncKeyChange={(value) => dispatchPlanning({ type: "set-sync-key", syncKey: value })}
+            onLoad={loadFromCloud}
+            onSave={saveToCloud}
+          />
         </motion.div>
 
-
-        <Card className={`overflow-hidden rounded-[2rem] border shadow-2xl backdrop-blur-xl ${statusStyle}`}>
-          <CardContent className="p-5">
-            <div className="flex items-start gap-4">
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-3 shadow-2xl">
-                <StatusIcon className="h-8 w-8" />
-              </div>
-              <div className="flex-1">
-                <div className="text-2xl font-semibold">{result.title}</div>
-                <div className="mt-1 text-sm text-neutral-300">{result.subtitle}</div>
-                <div className="mt-4 flex items-center gap-3">
-                  <div className="text-xs uppercase tracking-[0.25em] text-neutral-500">Risk Score</div>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-current transition-all" style={{ width: `${Math.min(result.risk * 8, 100)}%` }} />
-                  </div>
-                  <div className="font-mono text-sm text-neutral-200">{result.risk}</div>
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <ReadinessCard title="Execution" value={result.readiness?.execution ?? 0} />
-                  <ReadinessCard title="Emotional" value={result.readiness?.emotional ?? 0} />
-                  <ReadinessCard title="Discipline" value={result.readiness?.discipline ?? 0} />
-                  <ReadinessCard title="Revenge Risk" value={result.revengeDetectorScore ?? 0} inverse />
-                </div>
-
-                {result.warnings?.length > 0 && (
-                  <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-300/80">Предупреждения</div>
-                    <div className="space-y-2">
-                      {result.warnings.map((w) => (
-                        <div key={w}>• {w}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {result.reasons.length > 0 && (
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
-                    <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                      Почему такой статус
-                    </div>
-                    <div className="space-y-2">
-                      {result.reasons.map((r) => (
-                        <div key={r} className="flex items-start gap-2 text-sm text-neutral-200">
-                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                          <span>{r}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <RiskStatus result={riskResult} />
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
@@ -748,7 +627,7 @@ export default function TradeGateApp() {
                   <input
                     type="date"
                     value={activePlanDate}
-                    onChange={(e) => setActivePlanDate(e.target.value)}
+                    onChange={(event) => dispatchPlanning({ type: "set-active-date", activePlanDate: event.target.value })}
                     className="bg-transparent text-neutral-100 outline-none"
                   />
                 </label>
@@ -759,149 +638,22 @@ export default function TradeGateApp() {
             </div>
 
             <div className="space-y-5">
-              {marketIdeas.map((idea) => {
-                const plansForInstrument = sessionPlans.filter((p) => p.planDate === activePlanDate && p.symbol === idea.symbol);
-
-                return (
-                  <div key={idea.symbol} className="rounded-[2rem] border border-white/10 bg-black/20 p-4 shadow-xl">
-                    <div className="grid gap-4 md:grid-cols-[1fr_260px]">
-                      <div>
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{idea.symbol}</div>
-                            <div className="mt-1 text-2xl font-semibold text-neutral-100">{idea.title}</div>
-                          </div>
-                          <Button onClick={() => addSessionPlan(idea.symbol)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-                            <Plus className="mr-2 h-4 w-4" />
-                            Сценарий
-                          </Button>
-                        </div>
-
-                        <label className="mt-4 block">
-                          <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Идея / bias</div>
-                          <textarea
-                            value={getMarketIdeaText(idea, "bias")}
-                            onChange={(e) => updateMarketIdeaText(idea.symbol, "bias", e.target.value)}
-                            className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-                          />
-                        </label>
-
-                        <label className="mt-3 block">
-                          <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Альтернативный сценарий / отмена</div>
-                          <textarea
-                            value={getMarketIdeaText(idea, "scenario")}
-                            onChange={(e) => updateMarketIdeaText(idea.symbol, "scenario", e.target.value)}
-                            className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-500 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
-                        <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Картинка / график</div>
-                        {instrumentImages[getInstrumentImageKey(activePlanDate, idea.symbol)] ? (
-                          <img src={instrumentImages[getInstrumentImageKey(activePlanDate, idea.symbol)]} alt={`chart ${idea.symbol}`} className="h-36 w-full rounded-xl object-cover" />
-                        ) : (
-                          <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/10 text-center text-xs text-neutral-600">
-                            Прикрепи скрин графика<br />для этого инструмента
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleInstrumentImage(idea.symbol, e.target.files?.[0])}
-                          className="mt-3 w-full text-xs text-neutral-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-neutral-100"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      {plansForInstrument.length === 0 ? (
-                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-500">
-                          Пока нет сценариев по этому инструменту на выбранную дату. Добавь сценарий только здесь, внутри нужного инструмента.
-                        </div>
-                      ) : (
-                        plansForInstrument.map((item, index) => {
-                          const ready = item.symbol && item.direction && item.entryZone && item.trigger && item.stop && item.take;
-                          return (
-                            <div key={item.id} className={`rounded-2xl border p-4 ${ready ? "border-emerald-400/30 bg-emerald-500/10 text-neutral-100" : "border-white/10 bg-black/25 text-neutral-100"}`}>
-                              <div className="mb-3 flex items-center justify-between gap-3">
-                                <div>
-                                  <div className="font-semibold">Сценарий {index + 1}</div>
-                                  <div className="text-xs text-neutral-500">{ready ? "Готов к исполнению" : "Нужно заполнить все ключевые поля"}</div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button onClick={() => archiveSessionPlan(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-                                    В архив
-                                  </Button>
-                                  <Button onClick={() => removeSessionPlan(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-                                    <Trash2 className="h-4 w-4 text-red-300" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 md:grid-cols-3">
-                                <SelectInput label="Направление" value={item.direction} setValue={(v) => updateSessionPlan(item.id, "direction", v)} options={[{ value: "long", label: "Long" }, { value: "short", label: "Short" }, { value: "both", label: "Оба сценария" }]} />
-                                <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(v) => updateSessionPlan(item.id, "entryZone", v)} />
-                                <TextInput label="Триггер входа" value={item.trigger} setValue={(v) => updateSessionPlan(item.id, "trigger", v)} />
-                              </div>
-
-                              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                <TextInput label="Стоп" value={item.stop} setValue={(v) => updateSessionPlan(item.id, "stop", v)} />
-                                <TextInput label="Тейк" value={item.take} setValue={(v) => updateSessionPlan(item.id, "take", v)} />
-                              </div>
-
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
-                                <div className="mb-3 flex items-center justify-between gap-3">
-                                  <div>
-                                    <div className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">Сделка по сценарию</div>
-                                    <div className="mt-1 text-xs text-neutral-500">Введи тех. стоп, тейк и допустимый риск — лотность рассчитается автоматически.</div>
-                                  </div>
-                                </div>
-
-                                <div className="grid gap-3 md:grid-cols-5">
-                                  <NumberInput label="Вход" value={item.tradeEntry} setValue={(v) => updateSessionPlan(item.id, "tradeEntry", v)} />
-                                  <NumberInput label="Тех. стоп" value={item.tradeStop} setValue={(v) => updateSessionPlan(item.id, "tradeStop", v)} />
-                                  <NumberInput label="Тех. тейк" value={item.tradeTake} setValue={(v) => updateSessionPlan(item.id, "tradeTake", v)} />
-                                  <NumberInput label="Риск, $" value={item.tradeRisk} setValue={(v) => updateSessionPlan(item.id, "tradeRisk", v)} />
-                                  <NumberInput label="$ / пункт / 1 лот" value={item.tradePointValue} setValue={(v) => updateSessionPlan(item.id, "tradePointValue", v)} />
-                                </div>
-
-                                <ScenarioTradeMath item={item} />
-                              </div>
-
-                              <label className="mt-3 block">
-                                <div className="mb-1 text-sm text-neutral-300">Комментарий / отмена сценария</div>
-                                <textarea
-                                    value={item.note}
-                                    onChange={(e) => updateSessionPlan(item.id, "note", e.target.value)}
-                                    placeholder="Например: если уровень пробит без ретеста — не вхожу; если есть резкая новость — жду 15 минут"
-                                    className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-                                  />
-                              </label>
-
-                              <div className="mt-3 grid gap-3 md:grid-cols-3">
-                                <SelectInput label="Итог" value={item.resultStatus} setValue={(v) => updateSessionPlan(item.id, "resultStatus", v)} options={[{ value: "not_taken", label: "Входа не было" }, { value: "take", label: "Тейк" }, { value: "stop", label: "Стоп" }, { value: "manual_profit", label: "Ручное закрытие в плюс" }, { value: "manual_loss", label: "Ручное закрытие в минус" }, { value: "breakeven", label: "Безубыток" }]} />
-                                <SelectInput label="Техничная сделка?" value={item.technical} setValue={(v) => updateSessionPlan(item.id, "technical", v)} options={[{ value: "yes", label: "Да" }, { value: "no", label: "Нет" }, { value: "partial", label: "Частично" }]} />
-                                <NumberInput label="Финрезультат, $" value={item.finalResult} setValue={(v) => updateSessionPlan(item.id, "finalResult", v)} />
-                              </div>
-
-                              <label className="mt-3 block">
-                                <div className="mb-1 text-sm text-neutral-300">Комментарий для архива</div>
-                                <textarea
-                                    value={item.archiveComment}
-                                    onChange={(e) => updateSessionPlan(item.id, "archiveComment", e.target.value)}
-                                    placeholder="Что сработало / что нарушила / почему входа не было / что улучшить завтра"
-                                    className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-                                  />
-                              </label>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {MARKET_IDEAS.map((idea) => (
+                <InstrumentPlan
+                  key={idea.symbol}
+                  idea={idea}
+                  activePlanDate={activePlanDate}
+                  plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
+                  instrumentImages={instrumentImages as PersistedImages}
+                  marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
+                  onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
+                  onUpdateIdeaText={updateMarketIdeaText}
+                  onImageChange={handleInstrumentImage}
+                  onUpdatePlan={updateSessionPlan}
+                  onArchivePlan={(id) => dispatchPlanning({ type: "archive-plan", id })}
+                  onRemovePlan={(id) => dispatchPlanning({ type: "remove-plan", id })}
+                />
+              ))}
             </div>
 
             <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
@@ -919,14 +671,20 @@ export default function TradeGateApp() {
               </div>
             ) : (
               <div className="space-y-3">
-                {archivedPlans.map((item) => (
+                {archivedPlans.map((item: ArchivedPlan) => (
                   <div key={item.id} className="rounded-2xl border bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-semibold">{item.symbol} · {item.direction.toUpperCase()} · {item.entryZone}</div>
+                        <div className="font-semibold">
+                          {item.symbol} · {item.direction.toUpperCase()} · {item.entryZone}
+                        </div>
                         <div className="mt-1 text-xs text-neutral-500">Архивировано: {item.archivedAt}</div>
                       </div>
-                      <Button onClick={() => restoreArchivedPlan(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                      <Button
+                        onClick={() => dispatchPlanning({ type: "restore-plan", id: item.id })}
+                        variant="outline"
+                        className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                      >
                         Вернуть
                       </Button>
                     </div>
@@ -939,16 +697,12 @@ export default function TradeGateApp() {
                     </div>
 
                     <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
-                      <ArchiveField title="Итог" value={formatResultStatus(item.resultStatus)} />
-                      <ArchiveField title="Техничность" value={formatTechnical(item.technical)} />
+                      <ArchiveField title="Итог" value={RESULT_STATUS_LABELS[item.resultStatus] ?? item.resultStatus} />
+                      <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[item.technical] ?? item.technical} />
                       <ArchiveField title="Отмена сценария" value={item.note || "—"} />
                     </div>
 
-                    {item.archiveComment && (
-                      <div className="mt-3 rounded-xl bg-neutral-100 p-3 text-sm text-neutral-700">
-                        {item.archiveComment}
-                      </div>
-                    )}
+                    {item.archiveComment && <div className="mt-3 rounded-xl bg-neutral-100 p-3 text-sm text-neutral-700">{item.archiveComment}</div>}
                   </div>
                 ))}
               </div>
@@ -956,46 +710,7 @@ export default function TradeGateApp() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-          <CardContent className="space-y-4 p-5">
-            <SectionTitle icon={<Calculator className="h-4 w-4" />} title="План конкретной сделки и расчёт лота" />
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <TextInput label="Инструмент" value={symbol} setValue={setSymbol} />
-              <SelectInput label="Направление" value={direction} setValue={setDirection} options={[{ value: "long", label: "Long" }, { value: "short", label: "Short" }]} />
-              <NumberInput label="Риск на сделку, $" value={riskDollars} setValue={setRiskDollars} />
-            </div>
-
-            <label className="block">
-              <div className="mb-1 text-sm">Причина входа</div>
-              <textarea
-                value={entryReason}
-                onChange={(e) => setEntryReason(e.target.value)}
-                placeholder="Например: ретест уровня, импульс, подтверждение объёмом, стоп за локальный экстремум"
-                className="min-h-24 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-              />
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <NumberInput label="Вход" value={entryPrice} setValue={setEntryPrice} />
-              <NumberInput label="Стоп" value={stopPrice} setValue={setStopPrice} />
-              <NumberInput label="Тейк" value={takePrice} setValue={setTakePrice} />
-              <NumberInput label="$ за 1 пункт на 1 лот" value={dollarsPerPointPerLot} setValue={setDollarsPerPointPerLot} />
-            </div>
-
-            <div className="grid gap-3 text-sm md:grid-cols-4">
-              <Rule title="Лот" value={Number.isFinite(tradeMath.lots) ? tradeMath.lots.toFixed(2) : "—"} />
-              <Rule title="Стоп, пунктов" value={tradeMath.stopDistance.toFixed(2)} />
-              <Rule title="Потенциал" value={`$${tradeMath.rewardDollars.toFixed(0)}`} />
-              <Rule title="R:R" value={tradeMath.rr > 0 ? `1:${tradeMath.rr.toFixed(2)}` : "—"} />
-            </div>
-
-            {!tradeMath.stopValid && <Warning text="Стоп стоит с неправильной стороны от входа." />}
-            {!tradeMath.takeValid && <Warning text="Тейк стоит с неправильной стороны от входа." />}
-            {entryReason.trim().length > 0 && entryReason.trim().length <= 8 && <Warning text="Причина входа слишком короткая. Это похоже на импульс, а не на план." />}
-            {tradeMath.rr > 0 && tradeMath.rr < 1.5 && <Warning text="R:R ниже 1:1.5. Для тебя это повышенный риск эмоционального добора." />}
-          </CardContent>
-        </Card>
+        <TradeCalculator calculator={calculator} tradeMath={tradeMath} onChange={updateCalculator} />
 
         <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
           <CardContent className="p-5">
@@ -1010,201 +725,11 @@ export default function TradeGateApp() {
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={reset} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">Сбросить проверку</Button>
+          <Button onClick={reset} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+            Сбросить проверку
+          </Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ReadinessCard({ title, value, inverse = false }) {
-  const normalized = Math.max(0, Math.min(100, Number(value) || 0));
-  const label = inverse ? `${normalized}%` : `${normalized}%`;
-  const barWidth = `${normalized}%`;
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-      <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{title}</div>
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-          <div className={`h-full rounded-full ${inverse ? "bg-red-300" : "bg-emerald-300"}`} style={{ width: barWidth }} />
-        </div>
-        <div className="font-mono text-sm text-neutral-200">{label}</div>
-      </div>
-    </div>
-  );
-}
-
-function SectionTitle({ icon, title }) {
-  return (
-    <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
-      {icon}
-      {title}
-    </div>
-  );
-}
-
-function Slider({ label, value, setValue, min, max, suffix = "" }) {
-  return (
-    <label className="block">
-      <div className="mb-1 flex justify-between text-sm text-neutral-300">
-        <span>{label}</span>
-        <span className="font-medium">{value}{suffix}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => setValue(Number(e.target.value))}
-        className="w-full"
-      />
-    </label>
-  );
-}
-
-function NumberInput({ label, value, setValue }) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-sm text-neutral-300">{label}</div>
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => {
-          const raw = e.target.value.replace(",", ".");
-          if (/^-?\d*\.?\d*$/.test(raw)) {
-            setValue(raw);
-          }
-        }}
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-      />
-    </label>
-  );
-}
-
-function TextInput({ label, value, setValue }) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-sm text-neutral-300">{label}</div>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-      />
-    </label>
-  );
-}
-
-function SelectInput({ label, value, setValue, options }) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-sm text-neutral-300">{label}</div>
-      <select
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function Toggle({ label, value, setValue, danger = false }) {
-  return (
-    <button
-      type="button"
-      onClick={() => setValue(!value)}
-      className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm transition ${
-        value ? (danger ? "border-red-400/30 bg-red-500/10 text-red-200" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200") : "border-white/10 bg-black/30 text-neutral-200"
-      }`}
-    >
-      <span>{label}</span>
-      <span className="font-semibold">{value ? "Да" : "Нет"}</span>
-    </button>
-  );
-}
-
-function Rule({ title, value }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-inner">
-      <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{title}</div>
-      <div className="mt-1 text-lg font-semibold text-neutral-100">{value}</div>
-    </div>
-  );
-}
-
-function ScenarioTradeMath({ item }) {
-  const entry = Number(item.tradeEntry);
-  const stop = Number(item.tradeStop);
-  const take = Number(item.tradeTake);
-  const risk = Number(item.tradeRisk);
-  const pointValue = Number(item.tradePointValue);
-
-  const stopDistance = Math.abs(entry - stop);
-  const takeDistance = Math.abs(take - entry);
-  const lot = stopDistance > 0 && pointValue > 0 && risk > 0 ? risk / (stopDistance * pointValue) : 0;
-  const potential = lot * takeDistance * pointValue;
-  const rr = stopDistance > 0 ? takeDistance / stopDistance : 0;
-
-  const hasData = item.tradeEntry && item.tradeStop && item.tradeTake && item.tradeRisk && item.tradePointValue;
-
-  if (!hasData) {
-    return (
-      <div className="mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-500">
-        Заполни вход, тех. стоп, тех. тейк, риск и стоимость пункта — здесь появится расчёт лотности.
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
-      <Rule title="Лотность" value={Number.isFinite(lot) ? lot.toFixed(2) : "—"} />
-      <Rule title="Стоп, пунктов" value={Number.isFinite(stopDistance) ? stopDistance.toFixed(2) : "—"} />
-      <Rule title="Потенциал" value={Number.isFinite(potential) ? `$${potential.toFixed(0)}` : "—"} />
-      <Rule title="R:R" value={rr > 0 ? `1:${rr.toFixed(2)}` : "—"} />
-    </div>
-  );
-}
-
-function ArchiveField({ title, value }) {
-  return (
-    <div className="rounded-xl bg-neutral-100 p-3">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{title}</div>
-      <div className="mt-1 font-medium">{value}</div>
-    </div>
-  );
-}
-
-function formatResultStatus(status) {
-  const map = {
-    not_taken: "Входа не было",
-    take: "Тейк",
-    stop: "Стоп",
-    manual_profit: "Ручное закрытие в плюс",
-    manual_loss: "Ручное закрытие в минус",
-    breakeven: "Безубыток",
-  };
-  return map[status] || status;
-}
-
-function formatTechnical(value) {
-  const map = {
-    yes: "Да",
-    no: "Нет",
-    partial: "Частично",
-  };
-  return map[value] || value;
-}
-
-function Warning({ text }) {
-  return (
-    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
-      {text}
     </div>
   );
 }
