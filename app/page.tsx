@@ -1,10 +1,10 @@
 "use client";
-// @ts-nocheck
+// @ts-nocheck"
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, Mic } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, Mic, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function TradeGateApp() {
   const [sleep, setSleep] = useState(7);
@@ -55,9 +55,31 @@ export default function TradeGateApp() {
   const [riskDollars, setRiskDollars] = useState(500);
   const [dollarsPerPointPerLot, setDollarsPerPointPerLot] = useState(1000);
 
+  const getDateISO = (date) => date.toISOString().slice(0, 10);
+  const initialPlanDate = (() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return getDateISO(date);
+  })();
+
+  const [activePlanDate, setActivePlanDate] = useState(initialPlanDate);
+
+  const activePlanDateLabel = new Date(`${activePlanDate}T12:00:00`).toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  const shiftPlanDate = (days) => {
+    const date = new Date(`${activePlanDate}T12:00:00`);
+    date.setDate(date.getDate() + days);
+    setActivePlanDate(getDateISO(date));
+  };
+
   const [sessionPlans, setSessionPlans] = useState([
     {
       id: 1,
+      planDate: activePlanDate,
       symbol: "BCOUSD",
       direction: "long",
       entryZone: "",
@@ -83,11 +105,7 @@ export default function TradeGateApp() {
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const tomorrowLabel = tomorrow.toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-  });
+  const tomorrowISO = getDateISO(tomorrow);
 
   const marketIdeas = [
     {
@@ -115,6 +133,7 @@ export default function TradeGateApp() {
       ...plans,
       {
         id: Date.now(),
+        planDate: activePlanDate,
         symbol,
         direction: "long",
         entryZone: "",
@@ -162,8 +181,8 @@ export default function TradeGateApp() {
   };
 
   const sessionPlanReadyCount = useMemo(() => {
-    return sessionPlans.filter((p) => p.symbol && p.direction && p.entryZone && p.trigger && p.stop && p.take).length;
-  }, [sessionPlans]);
+    return sessionPlans.filter((p) => p.planDate === activePlanDate && p.symbol && p.direction && p.entryZone && p.trigger && p.stop && p.take).length;
+  }, [sessionPlans, activePlanDate]);
 
   const tradeMath = useMemo(() => {
     const stopDistance = Math.abs(Number(entryPrice) - Number(stopPrice));
@@ -311,6 +330,7 @@ export default function TradeGateApp() {
     setSessionPlans([
       {
         id: 1,
+        planDate: activePlanDate,
         symbol: "BCOUSD",
         direction: "long",
         entryZone: "",
@@ -412,16 +432,29 @@ export default function TradeGateApp() {
         <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
           <CardContent className="space-y-4 p-5">
             <div className="flex items-center justify-between gap-3">
-              <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Торговый план на ${tomorrowLabel}`} />
-              <Button onClick={addSessionPlan} variant="outline" className="rounded-xl">
-                <Plus className="mr-2 h-4 w-4" />
-                Добавить сценарий
-              </Button>
+              <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Торговый план на ${activePlanDateLabel}`} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => shiftPlanDate(-1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-200">
+                  <CalendarDays className="h-4 w-4 text-emerald-300" />
+                  <input
+                    type="date"
+                    value={activePlanDate}
+                    onChange={(e) => setActivePlanDate(e.target.value)}
+                    className="bg-transparent text-neutral-100 outline-none"
+                  />
+                </label>
+                <Button onClick={() => shiftPlanDate(1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-5">
               {marketIdeas.map((idea) => {
-                const plansForInstrument = sessionPlans.filter((p) => p.symbol === idea.symbol);
+                const plansForInstrument = sessionPlans.filter((p) => p.planDate === activePlanDate && p.symbol === idea.symbol);
 
                 return (
                   <div key={idea.symbol} className="rounded-[2rem] border border-white/10 bg-black/20 p-4 shadow-xl">
@@ -432,7 +465,7 @@ export default function TradeGateApp() {
                             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{idea.symbol}</div>
                             <div className="mt-1 text-2xl font-semibold text-neutral-100">{idea.title}</div>
                           </div>
-                          <Button onClick={() => addSessionPlan(idea.symbol)} variant="outline" className="rounded-xl">
+                          <Button onClick={() => addSessionPlan(idea.symbol)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
                             <Plus className="mr-2 h-4 w-4" />
                             Сценарий
                           </Button>
@@ -468,7 +501,7 @@ export default function TradeGateApp() {
                     <div className="mt-4 space-y-3">
                       {plansForInstrument.length === 0 ? (
                         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-500">
-                          Пока нет сценариев по этому инструменту. Добавь сценарий только здесь, внутри нужного инструмента.
+                          Пока нет сценариев по этому инструменту на выбранную дату. Добавь сценарий только здесь, внутри нужного инструмента.
                         </div>
                       ) : (
                         plansForInstrument.map((item, index) => {
@@ -481,11 +514,11 @@ export default function TradeGateApp() {
                                   <div className="text-xs text-neutral-500">{ready ? "Готов к исполнению" : "Нужно заполнить все ключевые поля"}</div>
                                 </div>
                                 <div className="flex gap-2">
-                                  <Button onClick={() => archiveSessionPlan(item.id)} variant="outline" className="rounded-xl">
+                                  <Button onClick={() => archiveSessionPlan(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
                                     В архив
                                   </Button>
-                                  <Button onClick={() => removeSessionPlan(item.id)} variant="outline" className="rounded-xl">
-                                    <Trash2 className="h-4 w-4" />
+                                  <Button onClick={() => removeSessionPlan(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                                    <Trash2 className="h-4 w-4 text-red-300" />
                                   </Button>
                                 </div>
                               </div>
@@ -514,9 +547,9 @@ export default function TradeGateApp() {
                                     type="button"
                                     onClick={() => startVoiceInput((text) => updateSessionPlan(item.id, "note", item.note ? `${item.note} ${text}` : text))}
                                     variant="outline"
-                                    className="h-11 rounded-xl"
+                                    className="h-11 rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
                                   >
-                                    <Mic className="h-4 w-4" />
+                                    <Mic className="h-4 w-4 text-emerald-300" />
                                   </Button>
                                 </div>
                               </label>
@@ -540,9 +573,9 @@ export default function TradeGateApp() {
                                     type="button"
                                     onClick={() => startVoiceInput((text) => updateSessionPlan(item.id, "archiveComment", item.archiveComment ? `${item.archiveComment} ${text}` : text))}
                                     variant="outline"
-                                    className="h-11 rounded-xl"
+                                    className="h-11 rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
                                   >
-                                    <Mic className="h-4 w-4" />
+                                    <Mic className="h-4 w-4 text-emerald-300" />
                                   </Button>
                                 </div>
                               </label>
@@ -557,7 +590,7 @@ export default function TradeGateApp() {
             </div>
 
             <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
-              Готовых сценариев: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
+              Готовых сценариев на выбранную дату: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
             </div>
           </CardContent>
         </Card>
@@ -578,7 +611,7 @@ export default function TradeGateApp() {
                         <div className="font-semibold">{item.symbol} · {item.direction.toUpperCase()} · {item.entryZone}</div>
                         <div className="mt-1 text-xs text-neutral-500">Архивировано: {item.archivedAt}</div>
                       </div>
-                      <Button onClick={() => restoreArchivedPlan(item.id)} variant="outline" className="rounded-xl">
+                      <Button onClick={() => restoreArchivedPlan(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
                         Вернуть
                       </Button>
                     </div>
@@ -662,7 +695,7 @@ export default function TradeGateApp() {
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={reset} variant="outline" className="rounded-xl">Сбросить проверку</Button>
+          <Button onClick={reset} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">Сбросить проверку</Button>
         </div>
       </div>
     </div>
@@ -809,4 +842,3 @@ function Warning({ text }) {
     </div>
   );
 }
-
