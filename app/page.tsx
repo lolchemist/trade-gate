@@ -25,6 +25,7 @@ import {
   calculateWeeklyReport,
   createCustomSetup,
   createSessionPlan,
+  formatCurrency,
   formatPlanDate,
   getActiveSetups,
   getDailyRiskBudget,
@@ -35,6 +36,7 @@ import {
   getNextDateISO,
   getPreferredSetup,
   getSetupName,
+  getWeekRange,
   isPlanReady,
 } from "@/components/trade-gate/utils";
 import type {
@@ -52,6 +54,16 @@ import type {
   TradeCalculatorField,
   TradeCalculatorState,
 } from "@/components/trade-gate/types";
+
+type AppTab = "today" | "plan" | "journal" | "analytics" | "settings";
+
+const appTabs: { id: AppTab; label: string }[] = [
+  { id: "today", label: "Сегодня" },
+  { id: "plan", label: "План" },
+  { id: "journal", label: "Журнал" },
+  { id: "analytics", label: "Аналитика" },
+  { id: "settings", label: "Настройки" },
+];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -245,6 +257,7 @@ export default function TradeGateApp() {
   const [consecutiveStops, setConsecutiveStops] = useState<string | number>("0");
   const [lockUntil, setLockUntil] = useState("");
   const [calculator, setCalculator] = useState<TradeCalculatorState>(initialCalculatorState);
+  const [activeTab, setActiveTab] = useState<AppTab>("today");
 
   const { setups, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
@@ -542,6 +555,7 @@ export default function TradeGateApp() {
   ]);
 
   const weeklyReport = useMemo(() => calculateWeeklyReport(archivedPlans, activePlanDate), [archivedPlans, activePlanDate]);
+  const analyticsStats = useMemo(() => getAnalyticsStats(archivedPlans, activePlanDate, emergencyNotes), [archivedPlans, activePlanDate, emergencyNotes]);
   const permission = useMemo(
     () =>
       calculatePermission({
@@ -676,218 +690,343 @@ export default function TradeGateApp() {
             </div>
           </div>
 
-          <CloudSync
-            syncKey={syncKey}
-            syncStatus={syncStatus}
-            onSyncKeyChange={(value) => dispatchPlanning({ type: "set-sync-key", syncKey: value })}
-            onLoad={loadFromCloud}
-            onSave={saveToCloud}
-          />
-        </motion.div>
-
-        <RiskStatus result={riskResult} />
-
-        <PermissionCard permission={permission} />
-
-        <EmergencyCard
-          note={emergencyNote}
-          onNoteChange={(value) => dispatchPlanning({ type: "set-emergency-note", planDate: activePlanDate, value })}
-          onEmergency={triggerEmergencyLock}
-        />
-
-        <DailyRiskBudgetCard
-          budgetUsd={activeDailyRiskBudget.budgetUsd}
-          plannedRiskUsed={plannedRiskUsed}
-          remainingRisk={dailyRiskRemaining}
-          onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
-        />
-
-        <AccountSettingsCard
-          settings={accountSettings}
-          dailyLossUsed={propDailyLossUsed}
-          totalLossUsed={Math.max(propDailyLossUsed, Number(accountSettings.personalMaxLoss) > 0 ? propDailyLossUsed : 0)}
-          profitProgress={Math.max(0, Number(dailyPnl) || 0)}
-          onChange={(field, value) => dispatchPlanning({ type: "set-account-setting", field, value })}
-        />
-
-        <SetupPlaybookCard
-          setups={setups}
-          onAdd={(name, description, defaultInstrument) => dispatchPlanning({ type: "add-setup", name, description, defaultInstrument })}
-          onUpdate={(id, changes) => dispatchPlanning({ type: "update-setup", id, changes })}
-          onDelete={(id) => dispatchPlanning({ type: "delete-setup", id })}
-        />
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-            <CardContent className="space-y-4 p-5">
-              <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
-              <Slider label="Сон, часов" value={sleep} setValue={setSleep} min={0} max={10} suffix="ч" />
-              <Slider label="Тревога" value={anxiety} setValue={setAnxiety} min={0} max={10} />
-              <Slider label="Желание срочно торговать" value={urge} setValue={setUrge} min={0} max={10} />
-              <Slider label="Злость / раздражение" value={anger} setValue={setAnger} min={0} max={10} />
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-            <CardContent className="space-y-4 p-5">
-              <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
-              <NumberInput label="PnL за день, $" value={dailyPnl} setValue={setDailyPnl} />
-              <NumberInput label="Дневной убыток, $" value={dailyLoss} setValue={setDailyLoss} />
-              <NumberInput label="Сделок сегодня" value={tradesToday} setValue={setTradesToday} />
-              <NumberInput label="Стопов подряд" value={consecutiveStops} setValue={setConsecutiveStops} />
-              <Toggle label="Есть чёткий план сделки" value={plan} setValue={setPlan} />
-              <Toggle label="Новости проверены" value={newsChecked} setValue={setNewsChecked} />
-              <Toggle label="Стоп заранее определён" value={stopSet} setValue={setStopSet} />
-              <Toggle label="Есть желание отбиться" value={revenge} setValue={setRevenge} danger />
-              <div className="grid gap-2 md:grid-cols-2">
-                <Button
+          <div className="mt-5 overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2 rounded-2xl border border-white/10 bg-black/25 p-1 shadow-xl backdrop-blur">
+              {appTabs.map((tab) => (
+                <button
+                  key={tab.id}
                   type="button"
-                  onClick={() => {
-                    const until = new Date();
-                    until.setHours(until.getHours() + 2);
-                    setLockUntil(until.toISOString());
-                  }}
-                  variant="outline"
-                  className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    activeTab === tab.id
+                      ? "border border-emerald-400/30 bg-emerald-500/15 text-emerald-100 shadow-lg shadow-emerald-950/20"
+                      : "border border-transparent text-neutral-400 hover:bg-white/5 hover:text-neutral-100"
+                  }`}
                 >
-                  Блокировка 2 часа
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => setLockUntil("")}
-                  variant="outline"
-                  className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
-                >
-                  Снять блокировку
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-          <CardContent className="space-y-4 p-5">
-            <div className="flex items-center justify-between gap-3">
-              <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Торговый план на ${activePlanDateLabel}`} />
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => shiftPlanDate(-1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-200">
-                  <CalendarDays className="h-4 w-4 text-emerald-300" />
-                  <input
-                    type="date"
-                    value={activePlanDate}
-                    onChange={(event) => dispatchPlanning({ type: "set-active-date", activePlanDate: event.target.value })}
-                    className="bg-transparent text-neutral-100 outline-none"
-                  />
-                </label>
-                <Button onClick={() => shiftPlanDate(1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <Button onClick={closeTradingDay} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
-                  Закрыть торговый день
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              {MARKET_IDEAS.map((idea) => (
-                <InstrumentPlan
-                  key={idea.symbol}
-                  idea={idea}
-                  activePlanDate={activePlanDate}
-                  plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
-                  setups={activeSetups}
-                  instrumentImages={instrumentImages as PersistedImages}
-                  marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
-                  onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
-                  onUpdateIdeaText={updateMarketIdeaText}
-                  onImageChange={handleInstrumentImage}
-                  onUpdatePlan={updateSessionPlan}
-                  onArchivePlan={(id) => dispatchPlanning({ type: "archive-plan", id })}
-                  onRemovePlan={(id) => dispatchPlanning({ type: "remove-plan", id })}
-                />
+                  {tab.label}
+                </button>
               ))}
             </div>
+          </div>
+        </motion.div>
 
-            <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
-              Готовых сценариев на выбранную дату: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
-            </div>
-          </CardContent>
-        </Card>
+        {activeTab === "today" && (
+          <div className="space-y-5">
+            <RiskStatus result={riskResult} />
 
-        <WeeklyReportCard report={weeklyReport} />
+            <PermissionCard permission={permission} />
 
-        <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-          <CardContent className="space-y-4 p-5">
-            <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив торговых планов" />
-            {archivedPlans.length === 0 ? (
-              <div className="rounded-xl bg-neutral-100 px-3 py-3 text-sm text-neutral-600">
-                Архив пока пуст. После сессии заполни итог и нажми “В архив”.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {archivedPlans.map((item: ArchivedPlan) => (
-                  <div key={item.id} className="rounded-2xl border bg-white p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold">
-                          {item.symbol} · {item.direction.toUpperCase()} · {item.entryZone}
-                        </div>
-                        <div className="mt-1 text-xs text-neutral-500">Архивировано: {item.archivedAt}</div>
-                      </div>
-                      <Button
-                        onClick={() => dispatchPlanning({ type: "restore-plan", id: item.id })}
-                        variant="outline"
-                        className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
-                      >
-                        Вернуть
-                      </Button>
-                    </div>
+            <EmergencyCard
+              note={emergencyNote}
+              onNoteChange={(value) => dispatchPlanning({ type: "set-emergency-note", planDate: activePlanDate, value })}
+              onEmergency={triggerEmergencyLock}
+            />
 
-                    <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
-                      <ArchiveField title="Сетап" value={getSetupName(setups, item.setupId, item.setupName)} />
-                      <ArchiveField title="Триггер" value={item.trigger} />
-                      <ArchiveField title="Стоп" value={item.stop} />
-                      <ArchiveField title="Тейк" value={item.take} />
-                    </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+                <CardContent className="space-y-4 p-5">
+                  <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
+                  <Slider label="Сон, часов" value={sleep} setValue={setSleep} min={0} max={10} suffix="ч" />
+                  <Slider label="Тревога" value={anxiety} setValue={setAnxiety} min={0} max={10} />
+                  <Slider label="Желание срочно торговать" value={urge} setValue={setUrge} min={0} max={10} />
+                  <Slider label="Злость / раздражение" value={anger} setValue={setAnger} min={0} max={10} />
+                </CardContent>
+              </Card>
 
-                    <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
-                      <ArchiveField title="Финрезультат" value={item.finalResult ? `$${item.finalResult}` : "—"} />
-                      <ArchiveField title="Итог" value={RESULT_STATUS_LABELS[item.resultStatus] ?? item.resultStatus} />
-                      <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[item.technical] ?? item.technical} />
-                      <ArchiveField title="Отмена сценария" value={item.note || "—"} />
-                    </div>
-
-                    {item.archiveComment && <div className="mt-3 rounded-xl bg-neutral-100 p-3 text-sm text-neutral-700">{item.archiveComment}</div>}
+              <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+                <CardContent className="space-y-4 p-5">
+                  <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
+                  <NumberInput label="PnL за день, $" value={dailyPnl} setValue={setDailyPnl} />
+                  <NumberInput label="Дневной убыток, $" value={dailyLoss} setValue={setDailyLoss} />
+                  <NumberInput label="Сделок сегодня" value={tradesToday} setValue={setTradesToday} />
+                  <NumberInput label="Стопов подряд" value={consecutiveStops} setValue={setConsecutiveStops} />
+                  <Toggle label="Есть чёткий план сделки" value={plan} setValue={setPlan} />
+                  <Toggle label="Новости проверены" value={newsChecked} setValue={setNewsChecked} />
+                  <Toggle label="Стоп заранее определён" value={stopSet} setValue={setStopSet} />
+                  <Toggle label="Есть желание отбиться" value={revenge} setValue={setRevenge} danger />
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        const until = new Date();
+                        until.setHours(until.getHours() + 2);
+                        setLockUntil(until.toISOString());
+                      }}
+                      variant="outline"
+                      className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                    >
+                      Блокировка 2 часа
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setLockUntil("")}
+                      variant="outline"
+                      className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                    >
+                      Снять блокировку
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <TradeCalculator calculator={calculator} tradeMath={tradeMath} onChange={updateCalculator} />
-
-        <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
-          <CardContent className="p-5">
-            <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Правило для 100k аккаунта" />
-            <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
-              <Rule title="Дневной стоп" value="$1000" />
-              <Rule title="Риск на сделку" value="0.25–0.5%" />
-              <Rule title="Максимум сделок" value="1–2 идеи" />
+                </CardContent>
+              </Card>
             </div>
-            <p className="mt-4 text-sm text-neutral-600">Если статус красный — не спорить с приложением. Это не рекомендация, а запрет на торговлю.</p>
-          </CardContent>
-        </Card>
 
-        <div className="flex justify-end">
-          <Button onClick={reset} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-            Сбросить проверку
-          </Button>
-        </div>
+            <DailyRiskBudgetCard
+              budgetUsd={activeDailyRiskBudget.budgetUsd}
+              plannedRiskUsed={plannedRiskUsed}
+              remainingRisk={dailyRiskRemaining}
+              onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
+            />
+          </div>
+        )}
+
+        {activeTab === "plan" && (
+          <div className="space-y-5">
+            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+              <CardContent className="space-y-4 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Торговый план на ${activePlanDateLabel}`} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button onClick={() => shiftPlanDate(-1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-200">
+                      <CalendarDays className="h-4 w-4 text-emerald-300" />
+                      <input
+                        type="date"
+                        value={activePlanDate}
+                        onChange={(event) => dispatchPlanning({ type: "set-active-date", activePlanDate: event.target.value })}
+                        className="bg-transparent text-neutral-100 outline-none"
+                      />
+                    </label>
+                    <Button onClick={() => shiftPlanDate(1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  {MARKET_IDEAS.map((idea) => (
+                    <InstrumentPlan
+                      key={idea.symbol}
+                      idea={idea}
+                      activePlanDate={activePlanDate}
+                      plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
+                      setups={activeSetups}
+                      instrumentImages={instrumentImages as PersistedImages}
+                      marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
+                      onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
+                      onUpdateIdeaText={updateMarketIdeaText}
+                      onImageChange={handleInstrumentImage}
+                      onUpdatePlan={updateSessionPlan}
+                      onArchivePlan={(id) => dispatchPlanning({ type: "archive-plan", id })}
+                      onRemovePlan={(id) => dispatchPlanning({ type: "remove-plan", id })}
+                    />
+                  ))}
+                </div>
+
+                <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
+                  Готовых сценариев на выбранную дату: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
+                </div>
+              </CardContent>
+            </Card>
+
+            <TradeCalculator calculator={calculator} tradeMath={tradeMath} onChange={updateCalculator} />
+          </div>
+        )}
+
+        {activeTab === "journal" && (
+          <div className="space-y-5">
+            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+              <CardContent className="space-y-4 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Журнал: ${activePlanDateLabel}`} />
+                  <Button onClick={closeTradingDay} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+                    Закрыть торговый день
+                  </Button>
+                </div>
+                <div className="grid gap-3 text-sm md:grid-cols-4">
+                  <Rule title="Сценариев на дату" value={String(sessionPlans.filter((item) => item.planDate === activePlanDate).length)} />
+                  <Rule title="Готовых сценариев" value={String(sessionPlanReadyCount)} />
+                  <Rule title="Плановый риск" value={`$${plannedRiskUsed.toFixed(0)}`} />
+                  <Rule title="Остаток риска" value={`$${dailyRiskRemaining.toFixed(0)}`} />
+                </div>
+                <label className="block">
+                  <div className="mb-1 text-sm text-neutral-300">Ежедневный разбор</div>
+                  <textarea
+                    value={emergencyNote}
+                    onChange={(event) => dispatchPlanning({ type: "set-emergency-note", planDate: activePlanDate, value: event.target.value })}
+                    placeholder="Что сегодня было сделано по плану, где была ошибка, что завтра повторить или запретить?"
+                    className="min-h-24 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                  />
+                </label>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+              <CardContent className="space-y-4 p-5">
+                <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив торговых планов" />
+                {archivedPlans.length === 0 ? (
+                  <div className="rounded-xl bg-neutral-100 px-3 py-3 text-sm text-neutral-600">
+                    Архив пока пуст. После сессии заполни итог и нажми “В архив”.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {archivedPlans.map((item: ArchivedPlan) => (
+                      <div key={item.id} className="rounded-2xl border bg-white p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold">
+                              {item.symbol} · {item.direction.toUpperCase()} · {item.entryZone}
+                            </div>
+                            <div className="mt-1 text-xs text-neutral-500">Архивировано: {item.archivedAt}</div>
+                          </div>
+                          <Button
+                            onClick={() => dispatchPlanning({ type: "restore-plan", id: item.id })}
+                            variant="outline"
+                            className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                          >
+                            Вернуть
+                          </Button>
+                        </div>
+
+                        <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+                          <ArchiveField title="Сетап" value={getSetupName(setups, item.setupId, item.setupName)} />
+                          <ArchiveField title="Триггер" value={item.trigger} />
+                          <ArchiveField title="Стоп" value={item.stop} />
+                          <ArchiveField title="Тейк" value={item.take} />
+                        </div>
+
+                        <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+                          <ArchiveField title="Финрезультат" value={item.finalResult ? `$${item.finalResult}` : "—"} />
+                          <ArchiveField title="Итог" value={RESULT_STATUS_LABELS[item.resultStatus] ?? item.resultStatus} />
+                          <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[item.technical] ?? item.technical} />
+                          <ArchiveField title="Отмена сценария" value={item.note || "—"} />
+                        </div>
+
+                        {item.archiveComment && <div className="mt-3 rounded-xl bg-neutral-100 p-3 text-sm text-neutral-700">{item.archiveComment}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === "analytics" && (
+          <div className="space-y-5">
+            <WeeklyReportCard report={weeklyReport} />
+            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+              <CardContent className="space-y-4 p-5">
+                <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Разрезы PnL и ошибок" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <AnalyticsList title="PnL по инструментам" rows={analyticsStats.byInstrument} />
+                  <AnalyticsList title="PnL по сетапам" rows={analyticsStats.bySetup} />
+                </div>
+                <div className="grid gap-3 text-sm md:grid-cols-4">
+                  <Rule title="Техничность" value={`${weeklyReport.technicalTradePercentage}%`} />
+                  <Rule title="Нет входа" value={String(weeklyReport.noEntryCount)} />
+                  <Rule title="Стопов" value={String(weeklyReport.stopCount)} />
+                  <Rule title="Ошибок / не технично" value={String(analyticsStats.mistakeCount)} />
+                </div>
+                <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                  Дней с заметкой “что я пытаюсь вернуть”: {analyticsStats.revengeNoteCount}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === "settings" && (
+          <div className="space-y-5">
+            <CloudSync
+              syncKey={syncKey}
+              syncStatus={syncStatus}
+              onSyncKeyChange={(value) => dispatchPlanning({ type: "set-sync-key", syncKey: value })}
+              onLoad={loadFromCloud}
+              onSave={saveToCloud}
+            />
+
+            <AccountSettingsCard
+              settings={accountSettings}
+              dailyLossUsed={propDailyLossUsed}
+              totalLossUsed={Math.max(propDailyLossUsed, Number(accountSettings.personalMaxLoss) > 0 ? propDailyLossUsed : 0)}
+              profitProgress={Math.max(0, Number(dailyPnl) || 0)}
+              onChange={(field, value) => dispatchPlanning({ type: "set-account-setting", field, value })}
+            />
+
+            <SetupPlaybookCard
+              setups={setups}
+              onAdd={(name, description, defaultInstrument) => dispatchPlanning({ type: "add-setup", name, description, defaultInstrument })}
+              onUpdate={(id, changes) => dispatchPlanning({ type: "update-setup", id, changes })}
+              onDelete={(id) => dispatchPlanning({ type: "delete-setup", id })}
+            />
+
+            <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl">
+              <CardContent className="p-5">
+                <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Правило для 100k аккаунта" />
+                <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
+                  <Rule title="Дневной стоп" value="$1000" />
+                  <Rule title="Риск на сделку" value="0.25–0.5%" />
+                  <Rule title="Максимум сделок" value="1–2 идеи" />
+                </div>
+                <p className="mt-4 text-sm text-neutral-600">Если статус красный — не спорить с приложением. Это не рекомендация, а запрет на торговлю.</p>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={reset} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                Сбросить проверку
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function AnalyticsList({ title, rows }: { title: string; rows: { label: string; value: number }[] }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">{title}</div>
+      {rows.length === 0 ? (
+        <div className="text-sm text-neutral-500">Нет архивных сделок за выбранную неделю.</div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm">
+              <span className="text-neutral-200">{row.label}</span>
+              <span className={`font-mono ${row.value >= 0 ? "text-emerald-200" : "text-red-200"}`}>{formatCurrency(row.value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getAnalyticsStats(archivedPlans: ArchivedPlan[], activePlanDate: string, emergencyNotes: Record<string, string>) {
+  const { weekStart, weekEnd } = getWeekRange(activePlanDate);
+  const plans = archivedPlans.filter((plan) => plan.planDate >= weekStart && plan.planDate <= weekEnd && plan.resultStatus !== "not_taken");
+
+  return {
+    byInstrument: groupPnl(plans, (plan) => plan.symbol),
+    bySetup: groupPnl(plans, (plan) => plan.setupName || "Сетап не выбран"),
+    mistakeCount: plans.filter((plan) => plan.technical === "no").length,
+    revengeNoteCount: Object.entries(emergencyNotes).filter(([date, note]) => date >= weekStart && date <= weekEnd && note.trim().length > 0).length,
+  };
+}
+
+function groupPnl(plans: ArchivedPlan[], getLabel: (plan: ArchivedPlan) => string) {
+  const totals = new Map<string, number>();
+
+  for (const plan of plans) {
+    const label = getLabel(plan);
+    totals.set(label, (totals.get(label) ?? 0) + (Number(plan.finalResult) || 0));
+  }
+
+  return [...totals.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
 }
