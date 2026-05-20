@@ -103,6 +103,8 @@ export default function TradeGateApp() {
   const [archivedPlans, setArchivedPlans] = useState([]);
   const [instrumentImages, setInstrumentImages] = useState({});
 
+  const getInstrumentImageKey = (date, symbol) => `${date}:${symbol}`;
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem("trade-gate-state-v1");
@@ -205,7 +207,7 @@ export default function TradeGateApp() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setInstrumentImages((images) => ({ ...images, [symbol]: reader.result }));
+      setInstrumentImages((images) => ({ ...images, [getInstrumentImageKey(activePlanDate, symbol)]: reader.result }));
     };
     reader.readAsDataURL(file);
   };
