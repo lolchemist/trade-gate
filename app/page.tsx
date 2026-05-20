@@ -1,12 +1,21 @@
 "use client";
-// @ts-nocheck"
-import React, { useMemo, useState } from "react";
+// @ts-nocheck
+
+import React, { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, Mic, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
 export default function TradeGateApp() {
+  const supabase = useMemo(() => {
+    if (!supabaseUrl || !supabaseAnonKey) return null;
+    return createClient(supabaseUrl, supabaseAnonKey);
+  }, []);
   const [sleep, setSleep] = useState(7);
   const [anxiety, setAnxiety] = useState(5);
   const [urge, setUrge] = useState(5);
@@ -18,11 +27,13 @@ export default function TradeGateApp() {
   const [newsChecked, setNewsChecked] = useState(false);
   const [stopSet, setStopSet] = useState(false);
   const [revenge, setRevenge] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [syncKey, setSyncKey] = useState("nataliia-main");
+  const [syncStatus, setSyncStatus] = useState("");
   const [voiceStatus, setVoiceStatus] = useState("");
 
   const startVoiceInput = (onText) => {
-    const SpeechRecognition =
-  (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setVoiceStatus("Голосовой ввод не поддерживается в этом браузере. Попробуй Chrome или Safari.");
@@ -119,10 +130,111 @@ export default function TradeGateApp() {
   const [archivedPlans, setArchivedPlans] = useState([]);
   const [instrumentImages, setInstrumentImages] = useState({});
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("trade-gate-state-v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.sessionPlans) setSessionPlans(parsed.sessionPlans);
+        if (parsed.archivedPlans) setArchivedPlans(parsed.archivedPlans);
+        if (parsed.instrumentImages) setInstrumentImages(parsed.instrumentImages);
+        if (parsed.activePlanDate) setActivePlanDate(parsed.activePlanDate);
+        if (parsed.syncKey) setSyncKey(parsed.syncKey);
+      }
+    } catch (error) {
+      console.error("Failed to load saved Trade Gate state", error);
+    } finally {
+      setIsHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    try {
+      localStorage.setItem(
+        "trade-gate-state-v1",
+        JSON.stringify({
+          sessionPlans,
+          archivedPlans,
+          instrumentImages,
+          activePlanDate,
+          syncKey,
+        })
+      );
+    } catch (error) {
+      console.error("Failed to save Trade Gate state", error);
+    }
+  }, [isHydrated, sessionPlans, archivedPlans, instrumentImages, activePlanDate, syncKey]);
+
+  const cloudPayload = useMemo(() => ({
+    sessionPlans,
+    archivedPlans,
+    instrumentImages,
+    activePlanDate,
+  }), [sessionPlans, archivedPlans, instrumentImages, activePlanDate]);
+
+  const saveToCloud = async () => {
+    if (!supabase) {
+      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
+      return;
+    }
+
+    setSyncStatus("Сохраняю в базу…");
+    const { error } = await supabase
+      .from("trade_gate_state")
+      .upsert({
+        user_key: syncKey,
+        data: cloudPayload,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_key" });
+
+    if (error) {
+      setSyncStatus(`Ошибка сохранения: ${error.message}`);
+      return;
+    }
+
+    setSyncStatus("Сохранено в базе");
+  };
+
+  const loadFromCloud = async () => {
+    if (!supabase) {
+      setSyncStatus("Supabase не настроен: добавь env-переменные в Vercel.");
+      return;
+    }
+
+    setSyncStatus("Загружаю из базы…");
+    const { data, error } = await supabase
+      .from("trade_gate_state")
+      .select("data")
+      .eq("user_key", syncKey)
+      .maybeSingle();
+
+    if (error) {
+      setSyncStatus(`Ошибка загрузки: ${error.message}`);
+      return;
+    }
+
+    if (!data?.data) {
+      setSyncStatus("В базе пока нет данных по этому ключу");
+      return;
+    }
+
+    if (data.data.sessionPlans) setSessionPlans(data.data.sessionPlans);
+    if (data.data.archivedPlans) setArchivedPlans(data.data.archivedPlans);
+    if (data.data.instrumentImages) setInstrumentImages(data.data.instrumentImages);
+    if (data.data.activePlanDate) setActivePlanDate(data.data.activePlanDate);
+
+    setSyncStatus("Загружено из базы");
+  };
+
   const handleInstrumentImage = (symbol, file) => {
     if (!file) return;
-    const imageUrl = URL.createObjectURL(file);
-    setInstrumentImages((images) => ({ ...images, [symbol]: imageUrl }));
+    const reader = new FileReader();
+    reader.onload = () => {
+      setInstrumentImages((images) => ({ ...images, [symbol]: reader.result }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const tomorrow = new Date();
@@ -400,6 +512,27 @@ export default function TradeGateApp() {
               <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Account Mode</div>
               <div className="mt-1 text-lg font-semibold text-neutral-100">100K Challenge</div>
             </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 shadow-xl backdrop-blur">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+              Cloud Sync
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+              <input
+                value={syncKey}
+                onChange={(e) => setSyncKey(e.target.value)}
+                placeholder="Ключ синхронизации, например nataliia-main"
+                className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+              />
+              <Button onClick={loadFromCloud} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                Загрузить
+              </Button>
+              <Button onClick={saveToCloud} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+                Сохранить
+              </Button>
+            </div>
+            {syncStatus && <div className="mt-2 text-sm text-neutral-400">{syncStatus}</div>}
           </div>
         </motion.div>
 
