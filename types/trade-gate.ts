@@ -1,0 +1,213 @@
+export type Direction = "long" | "short" | "both";
+
+export type TradeDirection = Extract<Direction, "long" | "short">;
+
+export type ResultStatus =
+  | "not_taken"
+  | "take"
+  | "stop"
+  | "manual_profit"
+  | "manual_loss"
+  | "breakeven";
+
+export type TechnicalStatus = "yes" | "no" | "partial";
+
+export type GateStatus = "OK" | "CAUTION" | "DANGER" | "LOCKED";
+
+export type EditablePlanField = keyof SessionPlan;
+
+export type PersistedImages = Record<string, string>;
+
+export type MarketIdeaField = "bias" | "scenario";
+
+export type MarketIdeaNotes = Record<string, string>;
+
+export interface SessionPlan {
+  id: number;
+  planDate: string;
+  setupId: string;
+  setupName: string;
+  symbol: string;
+  direction: Direction;
+  entryZone: string;
+  trigger: string;
+  stop: string;
+  take: string;
+  note: string;
+  resultStatus: ResultStatus;
+  technical: TechnicalStatus;
+  finalResult: string;
+  archiveComment: string;
+  tradeEntry: string;
+  tradeStop: string;
+  tradeTake: string;
+  tradeRisk: string;
+  tradePointValue: string;
+  entryReason: string;
+}
+
+export interface ArchivedPlan extends SessionPlan {
+  archivedAt: string;
+}
+
+export interface MarketIdea {
+  symbol: string;
+  title: string;
+  bias: string;
+  scenario: string;
+}
+
+export interface Setup {
+  id: string;
+  name: string;
+  description?: string;
+  defaultInstrument?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyRiskBudget {
+  planDate: string;
+  budgetUsd: string;
+}
+
+export interface AccountSettings {
+  accountSize: string;
+  propDailyLossLimit: string;
+  personalDailyStop: string;
+  maxLossLimit: string;
+  personalMaxLoss: string;
+  profitTarget: string;
+}
+
+export interface WeeklyReport {
+  weekStart: string;
+  weekEnd: string;
+  totalPnl: number;
+  tradeCount: number;
+  technicalTradeCount: number;
+  technicalTradePercentage: number;
+  bestInstrument: string;
+  worstInstrument: string;
+  bestSetup: string;
+  worstSetup: string;
+  setupStats: WeeklySetupReport[];
+  stopCount: number;
+  takeCount: number;
+  manualCloseCount: number;
+  noEntryCount: number;
+}
+
+export interface WeeklySetupReport {
+  setupName: string;
+  totalPnl: number;
+  tradeCount: number;
+  technicalTradePercentage: number;
+}
+
+export interface PermissionToTrade {
+  permission: "granted" | "reduced" | "denied";
+  maxAllowedRisk: number;
+  maxAdditionalTrades: number;
+  reEntryAllowed: boolean;
+  instruction: string;
+}
+
+export interface EmergencyLockState {
+  revenge: boolean;
+  lockUntil: string;
+}
+
+export interface PlanningState {
+  setups: Setup[];
+  sessionPlans: SessionPlan[];
+  archivedPlans: ArchivedPlan[];
+  instrumentImages: PersistedImages;
+  marketIdeaNotes: MarketIdeaNotes;
+  dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  accountSettings: AccountSettings;
+  emergencyNotes: Record<string, string>;
+  emergencyLock: EmergencyLockState;
+  activePlanDate: string;
+  syncKey: string;
+  lastUpdatedAt: string;
+}
+
+export interface CloudPayload {
+  setups: Setup[];
+  sessionPlans: SessionPlan[];
+  archivedPlans: ArchivedPlan[];
+  instrumentImages: PersistedImages;
+  marketIdeaNotes: MarketIdeaNotes;
+  dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  accountSettings: AccountSettings;
+  emergencyNotes: Record<string, string>;
+  emergencyLock: EmergencyLockState;
+  activePlanDate: string;
+  lastUpdatedAt: string;
+}
+
+export type StorageSource = "supabase" | "localStorage" | "default";
+
+export type SyncStatus = "Saved locally" | "Syncing…" | "Synced" | "Offline / Supabase unavailable" | "Sync error";
+
+export interface StorageLoadResult {
+  state: PlanningState;
+  source: StorageSource;
+  message: string;
+}
+
+export interface StorageSaveResult {
+  source: "supabase" | "localStorage";
+  message: string;
+  state: PlanningState;
+  status: SyncStatus;
+}
+
+export interface ReadinessScores {
+  execution: number;
+  emotional: number;
+  discipline: number;
+}
+
+export interface GateResult {
+  status: GateStatus;
+  title: string;
+  subtitle: string;
+  risk: number;
+  reasons: string[];
+  warnings: string[];
+  readiness: ReadinessScores;
+  revengeDetectorScore: number;
+}
+
+export interface TradeMath {
+  stopDistance: number;
+  takeDistance: number;
+  lots: number;
+  rewardDollars: number;
+  rr: number;
+  stopValid: boolean;
+  takeValid: boolean;
+  valid: boolean;
+}
+
+export interface TradeCalculatorState {
+  symbol: string;
+  direction: TradeDirection;
+  entryReason: string;
+  entryPrice: number | string;
+  stopPrice: number | string;
+  takePrice: number | string;
+  riskDollars: number | string;
+  dollarsPerPointPerLot: number | string;
+}
+
+export type TradeCalculatorField = keyof TradeCalculatorState;
+
+export type SelectOption<T extends string = string> = {
+  value: T;
+  label: string;
+};

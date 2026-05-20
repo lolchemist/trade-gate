@@ -5,6 +5,11 @@ import type { ArchivedPlan, CloudPayload, PlanningState, SessionPlan, Setup, Sto
 
 type CloudStateRow = {
   data: unknown;
+  updated_at: string | null;
+};
+
+type CloudTimestampRow = {
+  updated_at: string | null;
 };
 
 type StorageConfig = {
@@ -20,39 +25,79 @@ export function createTradeGateStorage(config: StorageConfig) {
 
   return {
     isCloudConfigured: Boolean(supabase),
-    async loadInitial(defaultState: PlanningState): Promise<StorageLoadResult> {
+    loadLocal(defaultState: PlanningState): StorageLoadResult {
       const localResult = readLocalState(defaultState);
-      const localState = localResult.state;
-      const syncKey = localState.syncKey || defaultState.syncKey;
-
-      if (supabase) {
-        const cloudResult = await loadFromSupabase(supabase, syncKey, defaultState);
-        if (cloudResult) {
-          writeLocalState(cloudResult.state);
-          return cloudResult;
-        }
-      }
 
       if (localResult.found) {
         return {
-          state: localState,
+          state: localResult.state,
           source: "localStorage",
-          message: supabase ? "Данные Supabase недоступны, загружена локальная копия" : "Supabase не настроен, загружена локальная копия",
+          message: "Saved locally",
         };
       }
 
       return {
-        state: defaultState,
+        state: normalizePlanningState(defaultState),
         source: "default",
-        message: supabase ? "В Supabase и локальной копии пока нет данных" : "Supabase не настроен, используется стартовое состояние",
+        message: "Saved locally",
+      };
+    },
+    async loadLatest(syncKey: string, currentState: PlanningState, defaultState: PlanningState): Promise<StorageLoadResult> {
+      if (!supabase) {
+        return {
+          state: currentState,
+          source: "localStorage",
+          message: "Offline / Supabase unavailable",
+        };
+      }
+
+      let cloudResult: StorageLoadResult | null = null;
+      try {
+        cloudResult = await loadFromSupabase(supabase, syncKey, defaultState);
+      } catch {
+        return {
+          state: currentState,
+          source: "localStorage",
+          message: "Offline / Supabase unavailable",
+        };
+      }
+      if (!cloudResult) {
+        return {
+          state: currentState,
+          source: "localStorage",
+          message: "Saved locally",
+        };
+      }
+
+      const cloudTime = Date.parse(cloudResult.state.lastUpdatedAt || "");
+      const localTime = Date.parse(currentState.lastUpdatedAt || "");
+
+      if (Number.isFinite(cloudTime) && cloudTime > (Number.isFinite(localTime) ? localTime : 0)) {
+        writeLocalState(cloudResult.state);
+        return cloudResult;
+      }
+
+      return {
+        state: currentState,
+        source: "localStorage",
+        message: "Saved locally",
       };
     },
     async load(syncKey: string, defaultState: PlanningState): Promise<StorageLoadResult> {
       if (supabase) {
-        const cloudResult = await loadFromSupabase(supabase, syncKey, defaultState);
-        if (cloudResult) {
-          writeLocalState(cloudResult.state);
-          return cloudResult;
+        try {
+          const cloudResult = await loadFromSupabase(supabase, syncKey, defaultState);
+          if (cloudResult) {
+            writeLocalState(cloudResult.state);
+            return cloudResult;
+          }
+        } catch {
+          const localResult = readLocalState({ ...defaultState, syncKey });
+          return {
+            state: localResult.state,
+            source: "localStorage",
+            message: "Offline / Supabase unavailable",
+          };
         }
       }
 
@@ -62,22 +107,34 @@ export function createTradeGateStorage(config: StorageConfig) {
         source: localResult.found ? "localStorage" : "default",
         message: localResult.found
           ? supabase
-            ? "В Supabase нет данных по этому ключу, загружена локальная копия"
-            : "Supabase не настроен, загружена локальная копия"
+            ? "Saved locally"
+            : "Offline / Supabase unavailable"
           : supabase
-            ? "В Supabase и локальной копии пока нет данных по этому ключу"
-            : "Supabase не настроен, локальной копии пока нет",
+            ? "Saved locally"
+            : "Offline / Supabase unavailable",
       };
     },
     async save(state: PlanningState): Promise<StorageSaveResult> {
-      const normalizedState = normalizePlanningState(state);
+      const now = new Date().toISOString();
+      const normalizedState = normalizePlanningState({ ...state, lastUpdatedAt: now });
 
       if (supabase) {
+        const conflict = await getCloudConflict(supabase, normalizedState.syncKey, state.lastUpdatedAt);
+        if (conflict) {
+          writeLocalState(normalizedState);
+          return {
+            source: "localStorage",
+            message: conflict,
+            state: normalizedState,
+            status: "Sync error",
+          };
+        }
+
         const { error } = await supabase.from(TABLE_NAME).upsert(
           {
             user_key: normalizedState.syncKey,
             data: toCloudPayload(normalizedState),
-            updated_at: new Date().toISOString(),
+            updated_at: now,
           },
           { onConflict: "user_key" }
         );
@@ -86,21 +143,27 @@ export function createTradeGateStorage(config: StorageConfig) {
           writeLocalState(normalizedState);
           return {
             source: "supabase",
-            message: "Сохранено в Supabase, локальная копия обновлена",
+            message: "Synced",
+            state: normalizedState,
+            status: "Synced",
           };
         }
 
         writeLocalState(normalizedState);
         return {
           source: "localStorage",
-          message: `Supabase недоступен: ${error.message}. Сохранено локально`,
+          message: `Sync error: ${error.message}`,
+          state: normalizedState,
+          status: "Sync error",
         };
       }
 
       writeLocalState(normalizedState);
       return {
         source: "localStorage",
-        message: "Supabase не настроен, сохранено локально",
+        message: "Offline / Supabase unavailable",
+        state: normalizedState,
+        status: "Offline / Supabase unavailable",
       };
     },
   };
@@ -111,15 +174,30 @@ function createSupabaseClient(config: StorageConfig): SupabaseClient | null {
   return createClient(config.supabaseUrl, config.supabaseAnonKey);
 }
 
-async function loadFromSupabase(supabase: SupabaseClient, syncKey: string, defaultState: PlanningState): Promise<StorageLoadResult | null> {
-  const { data, error } = await supabase.from(TABLE_NAME).select("data").eq("user_key", syncKey).maybeSingle<CloudStateRow>();
+async function getCloudConflict(supabase: SupabaseClient, syncKey: string, localLastUpdatedAt: string) {
+  const { data, error } = await supabase.from(TABLE_NAME).select("updated_at").eq("user_key", syncKey).maybeSingle<CloudTimestampRow>();
+  if (error || !data?.updated_at) return "";
 
-  if (error || !data?.data) return null;
+  const cloudTime = Date.parse(data.updated_at);
+  const localTime = Date.parse(localLastUpdatedAt || "");
+
+  if (Number.isFinite(cloudTime) && cloudTime > (Number.isFinite(localTime) ? localTime : 0) + 1000) {
+    return "Sync error: в облаке есть более свежие данные. Загрузите из облака перед сохранением.";
+  }
+
+  return "";
+}
+
+async function loadFromSupabase(supabase: SupabaseClient, syncKey: string, defaultState: PlanningState): Promise<StorageLoadResult | null> {
+  const { data, error } = await supabase.from(TABLE_NAME).select("data, updated_at").eq("user_key", syncKey).maybeSingle<CloudStateRow>();
+
+  if (error) throw error;
+  if (!data?.data) return null;
 
   return {
-    state: normalizePlanningState({ ...(data.data as Partial<PlanningState>), syncKey }, defaultState),
+    state: normalizePlanningState({ ...(data.data as Partial<PlanningState>), syncKey, lastUpdatedAt: (data.data as Partial<PlanningState>).lastUpdatedAt ?? data.updated_at ?? undefined }, defaultState),
     source: "supabase",
-    message: "Загружено из Supabase",
+    message: "Synced",
   };
 }
 
@@ -160,8 +238,10 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
     emergencyNotes: state.emergencyNotes ?? defaultState?.emergencyNotes ?? {},
+    emergencyLock: state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" },
     activePlanDate: state.activePlanDate ?? defaultState?.activePlanDate ?? fallbackDate,
     syncKey: state.syncKey ?? defaultState?.syncKey ?? DEFAULT_SYNC_KEY,
+    lastUpdatedAt: state.lastUpdatedAt ?? defaultState?.lastUpdatedAt ?? "",
   };
 }
 
@@ -224,6 +304,8 @@ function toCloudPayload(state: PlanningState): CloudPayload {
     dailyRiskBudgets: state.dailyRiskBudgets,
     accountSettings: state.accountSettings,
     emergencyNotes: state.emergencyNotes,
+    emergencyLock: state.emergencyLock,
     activePlanDate: state.activePlanDate,
+    lastUpdatedAt: state.lastUpdatedAt,
   };
 }

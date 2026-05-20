@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { formatSyncStatus } from "@/components/trade-gate/utils";
 
 export function CloudSync({
   syncKey,
@@ -24,13 +25,13 @@ export function CloudSync({
           className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
         />
         <Button onClick={onLoad} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
-          Загрузить
+          Загрузить из облака
         </Button>
         <Button onClick={onSave} variant="outline" className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
-          Сохранить
+          Сохранить сейчас
         </Button>
       </div>
-      {syncStatus && <div className="mt-2 text-sm text-neutral-400">{syncStatus}</div>}
+      {syncStatus && <div className="mt-2 text-sm text-neutral-400">{formatSyncStatus(syncStatus)}</div>}
     </div>
   );
 }

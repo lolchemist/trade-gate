@@ -266,6 +266,31 @@ export function formatCurrency(value: number) {
   return `${sign}$${Math.abs(value).toFixed(0)}`;
 }
 
+export function formatSyncStatus(status: string) {
+  if (!status) return "сохранено локально";
+
+  if (status.startsWith("Sync error:")) {
+    return status.replace("Sync error:", "Ошибка синхронизации:");
+  }
+
+  const labels: Record<string, string> = {
+    "Saved locally": "сохранено локально",
+    "Syncing…": "синхронизация...",
+    Synced: "синхронизировано",
+    "Offline / Supabase unavailable": "офлайн / Supabase недоступен",
+    "Sync error": "ошибка синхронизации",
+  };
+
+  if (labels[status]) return labels[status];
+
+  return status
+    .replaceAll("Saved locally", labels["Saved locally"])
+    .replaceAll("Syncing…", labels["Syncing…"])
+    .replaceAll("Synced", labels.Synced)
+    .replaceAll("Offline / Supabase unavailable", labels["Offline / Supabase unavailable"])
+    .replaceAll("Sync error", labels["Sync error"]);
+}
+
 export function calculateTradeMath({
   entryPrice,
   stopPrice,
