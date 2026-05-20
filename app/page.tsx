@@ -68,15 +68,15 @@ export default function TradeGateApp() {
     ]);
   };
 
-  const updateSessionPlan = (id, field, value) => {
+  const updateSessionPlan = (id: number, field: string, value: string) => {
     setSessionPlans((plans) => plans.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
-  const removeSessionPlan = (id) => {
+  const removeSessionPlan = (id: number) => {
     setSessionPlans((plans) => plans.filter((p) => p.id !== id));
   };
 
-  const archiveSessionPlan = (id) => {
+  const archiveSessionPlan = (id: number) => {
     const planToArchive = sessionPlans.find((p) => p.id === id);
     if (!planToArchive) return;
 
@@ -90,7 +90,7 @@ export default function TradeGateApp() {
     setSessionPlans((plans) => plans.filter((p) => p.id !== id));
   };
 
-  const restoreArchivedPlan = (id) => {
+  const restoreArchivedPlan = (id: number) => {
     const planToRestore = archivedPlans.find((p) => p.id === id);
     if (!planToRestore) return;
 
