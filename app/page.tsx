@@ -1,5 +1,6 @@
 "use client";
 // @ts-nocheck"
+
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
@@ -91,6 +92,11 @@ export default function TradeGateApp() {
       technical: "yes",
       finalResult: "",
       archiveComment: "",
+      tradeEntry: "",
+      tradeStop: "",
+      tradeTake: "",
+      tradeRisk: "500",
+      tradePointValue: "1000",
     },
   ]);
 
@@ -145,6 +151,11 @@ export default function TradeGateApp() {
         technical: "yes",
         finalResult: "",
         archiveComment: "",
+      tradeEntry: "",
+      tradeStop: "",
+      tradeTake: "",
+      tradeRisk: "500",
+      tradePointValue: "1000",
       },
     ]);
   };
@@ -342,6 +353,11 @@ export default function TradeGateApp() {
         technical: "yes",
         finalResult: "",
         archiveComment: "",
+      tradeEntry: "",
+      tradeStop: "",
+      tradeTake: "",
+      tradeRisk: "500",
+      tradePointValue: "1000",
       },
     ]);
     setArchivedPlans([]);
@@ -532,6 +548,25 @@ export default function TradeGateApp() {
                               <div className="mt-3 grid gap-3 md:grid-cols-2">
                                 <TextInput label="Стоп" value={item.stop} setValue={(v) => updateSessionPlan(item.id, "stop", v)} />
                                 <TextInput label="Тейк" value={item.take} setValue={(v) => updateSessionPlan(item.id, "take", v)} />
+                              </div>
+
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                  <div>
+                                    <div className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">Сделка по сценарию</div>
+                                    <div className="mt-1 text-xs text-neutral-500">Введи тех. стоп, тейк и допустимый риск — лотность рассчитается автоматически.</div>
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-5">
+                                  <NumberInput label="Вход" value={item.tradeEntry} setValue={(v) => updateSessionPlan(item.id, "tradeEntry", v)} />
+                                  <NumberInput label="Тех. стоп" value={item.tradeStop} setValue={(v) => updateSessionPlan(item.id, "tradeStop", v)} />
+                                  <NumberInput label="Тех. тейк" value={item.tradeTake} setValue={(v) => updateSessionPlan(item.id, "tradeTake", v)} />
+                                  <NumberInput label="Риск, $" value={item.tradeRisk} setValue={(v) => updateSessionPlan(item.id, "tradeRisk", v)} />
+                                  <NumberInput label="$ / пункт / 1 лот" value={item.tradePointValue} setValue={(v) => updateSessionPlan(item.id, "tradePointValue", v)} />
+                                </div>
+
+                                <ScenarioTradeMath item={item} />
                               </div>
 
                               <label className="mt-3 block">
@@ -801,6 +836,39 @@ function Rule({ title, value }) {
     <div className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-inner">
       <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{title}</div>
       <div className="mt-1 text-lg font-semibold text-neutral-100">{value}</div>
+    </div>
+  );
+}
+
+function ScenarioTradeMath({ item }) {
+  const entry = Number(item.tradeEntry);
+  const stop = Number(item.tradeStop);
+  const take = Number(item.tradeTake);
+  const risk = Number(item.tradeRisk);
+  const pointValue = Number(item.tradePointValue);
+
+  const stopDistance = Math.abs(entry - stop);
+  const takeDistance = Math.abs(take - entry);
+  const lot = stopDistance > 0 && pointValue > 0 && risk > 0 ? risk / (stopDistance * pointValue) : 0;
+  const potential = lot * takeDistance * pointValue;
+  const rr = stopDistance > 0 ? takeDistance / stopDistance : 0;
+
+  const hasData = item.tradeEntry && item.tradeStop && item.tradeTake && item.tradeRisk && item.tradePointValue;
+
+  if (!hasData) {
+    return (
+      <div className="mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-500">
+        Заполни вход, тех. стоп, тех. тейк, риск и стоимость пункта — здесь появится расчёт лотности.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
+      <Rule title="Лотность" value={Number.isFinite(lot) ? lot.toFixed(2) : "—"} />
+      <Rule title="Стоп, пунктов" value={Number.isFinite(stopDistance) ? stopDistance.toFixed(2) : "—"} />
+      <Rule title="Потенциал" value={Number.isFinite(potential) ? `$${potential.toFixed(0)}` : "—"} />
+      <Rule title="R:R" value={rr > 0 ? `1:${rr.toFixed(2)}` : "—"} />
     </div>
   );
 }
