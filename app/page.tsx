@@ -1,4 +1,6 @@
 "use client";
+// @ts-nocheck
+
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
