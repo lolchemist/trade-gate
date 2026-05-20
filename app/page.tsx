@@ -1,6 +1,5 @@
 "use client";
 // @ts-nocheck"
-
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,11 +64,27 @@ export default function TradeGateApp() {
 
   const [activePlanDate, setActivePlanDate] = useState(initialPlanDate);
 
-  const activePlanDateLabel = new Date(`${activePlanDate}T12:00:00`).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const formatPlanDate = (isoDate) => {
+    const months = [
+      "января",
+      "февраля",
+      "марта",
+      "апреля",
+      "мая",
+      "июня",
+      "июля",
+      "августа",
+      "сентября",
+      "октября",
+      "ноября",
+      "декабря",
+    ];
+
+    const [year, month, day] = isoDate.split("-");
+    return `${Number(day)} ${months[Number(month) - 1]} ${year}`;
+  };
+
+  const activePlanDateLabel = formatPlanDate(activePlanDate);
 
   const shiftPlanDate = (days) => {
     const date = new Date(`${activePlanDate}T12:00:00`);
@@ -175,7 +190,7 @@ export default function TradeGateApp() {
     setArchivedPlans((plans) => [
       {
         ...planToArchive,
-        archivedAt: new Date().toLocaleString("ru-RU"),
+        archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
       },
       ...plans,
     ]);
