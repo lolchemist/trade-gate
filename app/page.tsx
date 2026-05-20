@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, Mic, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, Shield, Timer, TrendingUp, Calculator, ListChecks, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -30,33 +30,6 @@ export default function TradeGateApp() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [syncKey, setSyncKey] = useState("nataliia-main");
   const [syncStatus, setSyncStatus] = useState("");
-  const [voiceStatus, setVoiceStatus] = useState("");
-
-  const startVoiceInput = (onText) => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setVoiceStatus("Голосовой ввод не поддерживается в этом браузере. Попробуй Chrome или Safari.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "ru-RU";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => setVoiceStatus("Слушаю… говори комментарий");
-    recognition.onerror = () => setVoiceStatus("Не получилось распознать голос. Попробуй ещё раз.");
-    recognition.onend = () => setTimeout(() => setVoiceStatus(""), 2500);
-
-    recognition.onresult = (event) => {
-      const text = event.results?.[0]?.[0]?.transcript || "";
-      if (text) onText(text);
-      setVoiceStatus("Комментарий добавлен голосом");
-    };
-
-    recognition.start();
-  };
 
   const [symbol, setSymbol] = useState("BCOUSD");
   const [direction, setDirection] = useState("long");
@@ -536,11 +509,6 @@ export default function TradeGateApp() {
           </div>
         </motion.div>
 
-        {voiceStatus && (
-          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200 shadow-xl">
-            {voiceStatus}
-          </div>
-        )}
 
         <Card className={`overflow-hidden rounded-[2rem] border shadow-2xl backdrop-blur-xl ${statusStyle}`}>
           <CardContent className="p-5">
@@ -720,22 +688,12 @@ export default function TradeGateApp() {
 
                               <label className="mt-3 block">
                                 <div className="mb-1 text-sm text-neutral-300">Комментарий / отмена сценария</div>
-                                <div className="flex gap-2">
-                                  <textarea
+                                <textarea
                                     value={item.note}
                                     onChange={(e) => updateSessionPlan(item.id, "note", e.target.value)}
                                     placeholder="Например: если уровень пробит без ретеста — не вхожу; если есть резкая новость — жду 15 минут"
-                                    className="min-h-20 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                                    className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
                                   />
-                                  <Button
-                                    type="button"
-                                    onClick={() => startVoiceInput((text) => updateSessionPlan(item.id, "note", item.note ? `${item.note} ${text}` : text))}
-                                    variant="outline"
-                                    className="h-11 rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
-                                  >
-                                    <Mic className="h-4 w-4 text-emerald-300" />
-                                  </Button>
-                                </div>
                               </label>
 
                               <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -746,22 +704,12 @@ export default function TradeGateApp() {
 
                               <label className="mt-3 block">
                                 <div className="mb-1 text-sm text-neutral-300">Комментарий для архива</div>
-                                <div className="flex gap-2">
-                                  <textarea
+                                <textarea
                                     value={item.archiveComment}
                                     onChange={(e) => updateSessionPlan(item.id, "archiveComment", e.target.value)}
                                     placeholder="Что сработало / что нарушила / почему входа не было / что улучшить завтра"
-                                    className="min-h-20 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
+                                    className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
                                   />
-                                  <Button
-                                    type="button"
-                                    onClick={() => startVoiceInput((text) => updateSessionPlan(item.id, "archiveComment", item.archiveComment ? `${item.archiveComment} ${text}` : text))}
-                                    variant="outline"
-                                    className="h-11 rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
-                                  >
-                                    <Mic className="h-4 w-4 text-emerald-300" />
-                                  </Button>
-                                </div>
                               </label>
                             </div>
                           );
