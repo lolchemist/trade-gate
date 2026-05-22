@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_ENTRY_METHODS, DEFAULT_SETUPS, STORAGE_KEY } from "./constants";
-import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getSetupNames, syncLegacyResultFields } from "./utils";
+import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getSetupNames, mergeTradingDayStatuses, syncLegacyResultFields } from "./utils";
 import type { ArchivedPlan, CloudPayload, EntryMethod, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, Setup, StorageLoadResult, StorageSaveResult } from "./types";
 
 type CloudStateRow = {
@@ -237,6 +237,10 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
   const emergencyNotes = state.emergencyNotes ?? defaultState?.emergencyNotes ?? {};
   const emergencyLock = state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" };
   const riskControlsByDate = normalizeRiskControlsByDate(state.riskControlsByDate, defaultState?.riskControlsByDate, activePlanDate, emergencyNotes, emergencyLock);
+  const tradingDayStatuses = normalizeTradingDayStatuses(
+    mergeTradingDayStatuses(defaultState?.tradingDayStatuses, defaultState?.tradingDayStatusByDate, state.tradingDayStatuses, state.tradingDayStatusByDate),
+    activePlanDate
+  );
 
   return {
     setups,
@@ -246,16 +250,8 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
-    tradingDayStatusByDate: normalizeTradingDayStatuses(
-      { ...(state.tradingDayStatuses ?? {}), ...(state.tradingDayStatusByDate ?? {}) },
-      { ...(defaultState?.tradingDayStatuses ?? {}), ...(defaultState?.tradingDayStatusByDate ?? {}) },
-      activePlanDate
-    ),
-    tradingDayStatuses: normalizeTradingDayStatuses(
-      { ...(state.tradingDayStatuses ?? {}), ...(state.tradingDayStatusByDate ?? {}) },
-      { ...(defaultState?.tradingDayStatuses ?? {}), ...(defaultState?.tradingDayStatusByDate ?? {}) },
-      activePlanDate
-    ),
+    tradingDayStatusByDate: tradingDayStatuses,
+    tradingDayStatuses,
     riskControlsByDate,
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
     emergencyNotes,
@@ -268,10 +264,9 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
 
 function normalizeTradingDayStatuses(
   statuses: PlanningState["tradingDayStatuses"] | undefined,
-  defaultStatuses: PlanningState["tradingDayStatuses"] | undefined,
   activePlanDate: string
 ) {
-  const merged = { ...(defaultStatuses ?? {}), ...(statuses ?? {}) };
+  const merged = { ...(statuses ?? {}) };
   if (!merged[activePlanDate]) merged[activePlanDate] = "active";
   return merged;
 }

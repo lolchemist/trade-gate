@@ -15,6 +15,7 @@ import {
   getPreferredSetup,
   getRiskControlsForDate,
   getSetupNames,
+  mergeTradingDayStatuses,
   syncLegacyResultFields,
   validateScenarioPlan,
 } from "@/components/trade-gate/utils";
@@ -97,7 +98,13 @@ export type PlanningAction =
 
 export function planningReducer(state: PlanningState, action: PlanningAction): PlanningState {
   switch (action.type) {
-    case "hydrate":
+    case "hydrate": {
+      const hydratedTradingDayStatuses = mergeTradingDayStatuses(
+        state.tradingDayStatuses,
+        state.tradingDayStatusByDate,
+        action.payload.tradingDayStatuses,
+        action.payload.tradingDayStatusByDate
+      );
       return {
         ...state,
         setups: action.payload.setups ?? state.setups,
@@ -107,8 +114,8 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         instrumentImages: action.payload.instrumentImages ?? state.instrumentImages,
         marketIdeaNotes: action.payload.marketIdeaNotes ?? state.marketIdeaNotes,
         dailyRiskBudgets: action.payload.dailyRiskBudgets ?? state.dailyRiskBudgets,
-        tradingDayStatusByDate: action.payload.tradingDayStatusByDate ?? action.payload.tradingDayStatuses ?? state.tradingDayStatusByDate,
-        tradingDayStatuses: action.payload.tradingDayStatuses ?? state.tradingDayStatuses,
+        tradingDayStatusByDate: hydratedTradingDayStatuses,
+        tradingDayStatuses: hydratedTradingDayStatuses,
         riskControlsByDate: action.payload.riskControlsByDate ?? state.riskControlsByDate,
         accountSettings: action.payload.accountSettings ?? state.accountSettings,
         emergencyNotes: action.payload.emergencyNotes ?? state.emergencyNotes,
@@ -117,6 +124,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         syncKey: action.payload.syncKey ?? state.syncKey,
         lastUpdatedAt: action.payload.lastUpdatedAt ?? state.lastUpdatedAt,
       };
+    }
     case "set-active-date":
       return {
         ...state,

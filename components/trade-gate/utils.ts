@@ -12,6 +12,7 @@ import type {
   SessionPlan,
   Setup,
   TechnicalStatus,
+  TradingDayStatus,
   TradeExecutionStatus,
   TradeExecutionType,
   WeeklyReport,
@@ -26,6 +27,31 @@ export function getInitialPlanDate() {
   const date = new Date();
   date.setDate(date.getDate() + 1);
   return getDateISO(date);
+}
+
+const tradingDayStatusPriority: Record<TradingDayStatus, number> = {
+  active: 0,
+  closed: 1,
+  locked: 2,
+};
+
+export function mergeTradingDayStatuses(
+  ...maps: Array<Record<string, TradingDayStatus> | undefined>
+): Record<string, TradingDayStatus> {
+  const merged: Record<string, TradingDayStatus> = {};
+
+  for (const map of maps) {
+    if (!map) continue;
+
+    for (const [date, status] of Object.entries(map)) {
+      const current = merged[date];
+      if (!current || tradingDayStatusPriority[status] >= tradingDayStatusPriority[current]) {
+        merged[date] = status;
+      }
+    }
+  }
+
+  return merged;
 }
 
 export function formatPlanDate(isoDate: string) {

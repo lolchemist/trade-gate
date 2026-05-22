@@ -46,6 +46,7 @@ import {
   getScenarioTotalResult,
   getScenarioTrades,
   isPlanReady,
+  mergeTradingDayStatuses,
 } from "@/components/trade-gate/utils";
 import type {
   ArchivedPlan,
@@ -151,13 +152,15 @@ export default function TradeGateApp() {
   const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
   const archivedPlansForDate = useMemo(() => archivedPlans.filter((item) => item.planDate === activePlanDate), [archivedPlans, activePlanDate]);
-  const inferredClosedDay = archivedPlansForDate.length > 0 && activePlansForDate.length === 0;
+  const hasArchivedClosedDay = archivedPlansForDate.length > 0;
+  const inferredClosedDay = hasArchivedClosedDay && activePlansForDate.every((item) => item.status === "closed" || item.status === "archived");
   const effectiveTradingDayStatusByDate = useMemo(
-    () => ({
-      ...tradingDayStatuses,
-      ...tradingDayStatusByDate,
-      ...(inferredClosedDay && !tradingDayStatusByDate[activePlanDate] && !tradingDayStatuses[activePlanDate] ? { [activePlanDate]: "closed" as const } : {}),
-    }),
+    () =>
+      mergeTradingDayStatuses(
+        tradingDayStatuses,
+        tradingDayStatusByDate,
+        inferredClosedDay ? { [activePlanDate]: "closed" as const } : undefined
+      ),
     [tradingDayStatusByDate, tradingDayStatuses, inferredClosedDay, activePlanDate]
   );
   const tradingDayStatus = effectiveTradingDayStatusByDate[activePlanDate] ?? "active";
@@ -337,11 +340,6 @@ export default function TradeGateApp() {
   };
 
   const closeTradingDay = () => {
-    const confirmed = window.confirm(
-      `Закрыть торговый день ${activePlanDate}?\n\nБудет архивировано сценариев: ${closeDaySummary.scenarioCount}\nЗакрытых сделок: ${closeDaySummary.closedCount}\nФакт PnL: $${closeDaySummary.totalPnl.toFixed(0)}\nБез входа: ${closeDaySummary.noEntryCount}\nНезавершённых к переносу: ${closeCarryIds.length}`
-    );
-    if (!confirmed) return;
-
     const action: PlanningAction = { type: "close-trading-day", planDate: activePlanDate, nextPlanDate, carryPlanIds: closeCarryIds, carryMode: closeCarryMode };
     const nextPlanning = planningReducer(planning, action);
     dispatchPlanning(action);
