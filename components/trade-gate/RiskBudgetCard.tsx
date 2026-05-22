@@ -6,27 +6,31 @@ import { MetricTile, PanelHeader, ProgressMeter, TerminalPanel } from "./termina
 export function RiskBudgetCard({
   budgetUsd,
   plannedRiskUsed,
+  realizedLossUsed = 0,
   remainingRisk,
   onBudgetChange,
 }: {
   budgetUsd: string;
   plannedRiskUsed: number;
+  realizedLossUsed?: number;
   remainingRisk: number;
   onBudgetChange: (value: string) => void;
 }) {
   const budget = Number(budgetUsd) || 0;
-  const usedPercent = budget > 0 ? Math.min(100, Math.max(0, (plannedRiskUsed / budget) * 100)) : 0;
+  const riskUsedTotal = plannedRiskUsed + realizedLossUsed;
+  const usedPercent = budget > 0 ? Math.min(100, Math.max(0, (riskUsedTotal / budget) * 100)) : 0;
   const locked = remainingRisk < 0;
 
   return (
     <TerminalPanel className="p-5" glow={locked ? "red" : usedPercent >= 80 ? "amber" : "emerald"}>
       <PanelHeader eyebrow="Риск дня" title="Дневной риск-бюджет" meta={<WalletCards className="h-5 w-5 text-neutral-500" />} />
       <div className="mt-5">
-        <ProgressMeter label="Использование риска" value={plannedRiskUsed} max={Math.max(budget, 1)} detail={`${Math.round(usedPercent)}%`} tone={locked ? "red" : usedPercent >= 80 ? "amber" : "emerald"} />
+        <ProgressMeter label="Использование риска" value={riskUsedTotal} max={Math.max(budget, 1)} detail={`${Math.round(usedPercent)}%`} tone={locked ? "red" : usedPercent >= 80 ? "amber" : "emerald"} />
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-4">
         <MetricTile label="Бюджет" value={formatCurrency(budget)} />
         <MetricTile label="Запланировано" value={formatCurrency(plannedRiskUsed)} tone={usedPercent >= 80 ? "amber" : "neutral"} />
+        <MetricTile label="Факт. убыток" value={formatCurrency(realizedLossUsed)} tone={realizedLossUsed > 0 ? "amber" : "neutral"} />
         <MetricTile label="Остаток" value={formatCurrency(remainingRisk)} tone={locked ? "red" : "emerald"} />
       </div>
       <div className="mt-5">

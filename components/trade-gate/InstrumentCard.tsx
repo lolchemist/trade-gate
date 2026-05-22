@@ -1,5 +1,4 @@
 import { Plus, RadioTower, Trash2, Upload } from "lucide-react";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey, isPlanReady } from "./utils";
@@ -45,11 +44,16 @@ export function InstrumentCard({
 }) {
   const accent = instrumentAccents[idea.symbol] ?? instrumentAccents["UKOIL.cash"];
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
+  const uploadInputId = `chart-upload-${imageKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const image = instrumentImages[imageKey];
   const readyCount = plans.filter(isPlanReady).length;
   const riskAllocated = plans.reduce((sum, plan) => sum + (Number(plan.tradeRisk) || 0), 0);
   const readiness = plans.length > 0 ? Math.round((readyCount / plans.length) * 100) : 0;
   const getIdeaText = (field: MarketIdeaField) => marketIdeaNotes[getMarketIdeaKey(activePlanDate, idea.symbol, field)] ?? idea[field];
+
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[TradeGate chart render]", { symbol: idea.symbol, previewKey: imageKey, hasImage: Boolean(image) });
+  }
 
   return (
     <TerminalPanel className="overflow-hidden" glow={accent.tone}>
@@ -93,7 +97,8 @@ export function InstrumentCard({
             </div>
             {image ? (
               <div className="space-y-3">
-                <Image src={image} alt={`chart ${idea.symbol}`} width={320} height={190} unoptimized className="h-48 w-full rounded-2xl object-cover shadow-xl shadow-black/25" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img key={`preview:${imageKey}`} src={image} alt={`chart ${idea.symbol}`} className="h-48 w-full rounded-2xl object-cover shadow-xl shadow-black/25" />
                 <Button
                   type="button"
                   onClick={() => onDeleteImage(idea.symbol)}
@@ -111,18 +116,25 @@ export function InstrumentCard({
                 для даты / инструмента
               </div>
             )}
-            <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300 transition hover:bg-white/10">
+            <label htmlFor={uploadInputId} className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300 transition hover:bg-white/10">
               <Upload className="h-4 w-4" />
               Загрузить график
-              <input
-                type="file"
-                accept="image/*"
-                aria-label={`Загрузить график ${idea.symbol}`}
-                data-instrument-symbol={idea.symbol}
-                onChange={(event) => onImageChange(idea.symbol, event.target.files?.[0])}
-                className="hidden"
-              />
             </label>
+            <input
+              key={`upload:${imageKey}`}
+              id={uploadInputId}
+              type="file"
+              accept="image/*"
+              aria-label={`Загрузить график ${idea.symbol}`}
+              data-instrument-symbol={idea.symbol}
+              data-image-key={imageKey}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                onImageChange(idea.symbol, file);
+                event.currentTarget.value = "";
+              }}
+              className="sr-only"
+            />
           </div>
         </div>
       </div>

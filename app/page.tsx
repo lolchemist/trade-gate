@@ -17,6 +17,7 @@ import { PropRulesCard } from "@/components/trade-gate/PropRulesCard";
 import { ReadinessDashboard } from "@/components/trade-gate/ReadinessDashboard";
 import { RiskBudgetCard } from "@/components/trade-gate/RiskBudgetCard";
 import { SetupPlaybookCard } from "@/components/trade-gate/SetupPlaybookCard";
+import { TodayMetricsCard } from "@/components/trade-gate/TodayMetricsCard";
 import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
 import { MARKET_IDEAS, MAX_INSTRUMENT_IMAGE_BYTES, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "@/components/trade-gate/constants";
 import { ArchiveField, NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
@@ -24,14 +25,13 @@ import { useLocalStoragePersistence } from "@/hooks/trade-gate/useLocalStoragePe
 import { useRiskStatus } from "@/hooks/trade-gate/useRiskStatus";
 import { initialPlanningState, planningReducer, type PlanningAction, useTradeGateState } from "@/hooks/trade-gate/useTradeGateState";
 import { useSupabaseSync } from "@/hooks/trade-gate/useSupabaseSync";
+import { useTodayMetrics } from "@/hooks/trade-gate/useTodayMetrics";
 import { useWeeklyReport } from "@/hooks/trade-gate/useWeeklyReport";
 import {
   calculatePermission,
-  calculatePlannedRisk,
   formatPlanDate,
   formatSyncStatus,
   getActiveSetups,
-  getDailyRiskBudget,
   getDateISO,
   getBestValidScenario,
   getInstrumentImageKey,
@@ -100,17 +100,16 @@ export default function TradeGateApp() {
   const nextPlanDateLabel = formatPlanDate(nextPlanDate);
   const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
   const activeSetups = useMemo(() => getActiveSetups(setups), [setups]);
-  const activeDailyRiskBudget = useMemo(() => getDailyRiskBudget(dailyRiskBudgets, activePlanDate), [dailyRiskBudgets, activePlanDate]);
-  const plannedRiskUsed = useMemo(() => calculatePlannedRisk(sessionPlans, activePlanDate), [sessionPlans, activePlanDate]);
-  const dailyRiskRemaining = (Number(activeDailyRiskBudget.budgetUsd) || 0) - plannedRiskUsed;
+  const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
+  const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
+  const plannedRiskUsed = todayMetrics.plannedRiskUsed;
+  const dailyRiskRemaining = todayMetrics.remainingRisk;
   const emergencyNote = activeRiskControls.emergencyNote ?? emergencyNotes[activePlanDate] ?? "";
-  const personalDailyStopLimit = Number(accountSettings.personalDailyStop) || 0;
-  const personalDailyStopHit = personalDailyStopLimit > 0 && (Number(dailyPnl) <= -personalDailyStopLimit || Number(dailyLoss) <= -personalDailyStopLimit);
-  const propDailyLossUsed = Math.max(Math.abs(Math.min(Number(dailyPnl) || 0, Number(dailyLoss) || 0, 0)), 0);
-  const totalLossUsed = Math.max(propDailyLossUsed, Number(accountSettings.personalMaxLoss) > 0 ? propDailyLossUsed : 0);
-  const profitProgress = Math.max(0, Number(dailyPnl) || 0);
-  const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;
-  const propDailyLossClose = propDailyLossLimit > 0 && propDailyLossUsed >= propDailyLossLimit * 0.8;
+  const personalDailyStopHit = todayMetrics.personalDailyStopHit;
+  const propDailyLossUsed = todayMetrics.propDailyLossUsed;
+  const totalLossUsed = todayMetrics.totalLossUsed;
+  const profitProgress = todayMetrics.profitProgress;
+  const propDailyLossClose = todayMetrics.propDailyLossClose;
   const { isHydrated, syncStatus, setSyncStatus, saveNow, loadFromCloud } = useSupabaseSync({
     storage,
     planning,
@@ -130,11 +129,11 @@ export default function TradeGateApp() {
     anxiety,
     urge,
     anger,
-    dailyPnl,
-    dailyLoss,
-    consecutiveStops,
+    dailyPnl: todayMetrics.dailyPnlForRiskStatus,
+    dailyLoss: todayMetrics.dailyLossForRiskStatus,
+    consecutiveStops: todayMetrics.consecutiveStops,
     lockUntil,
-    tradesToday,
+    tradesToday: todayMetrics.tradesToday,
     plan,
     newsChecked,
     stopSet,
@@ -157,12 +156,12 @@ export default function TradeGateApp() {
         dailyRiskRemaining,
         revengeDetectorScore: riskResult.revengeDetectorScore,
         personalDailyStopHit,
-        tradesToday: Number(tradesToday) || 0,
-        consecutiveStops: Number(consecutiveStops) || 0,
+        tradesToday: todayMetrics.tradesToday,
+        consecutiveStops: todayMetrics.consecutiveStops,
         bestScenarioRisk: Number(bestValidScenario?.plan.tradeRisk) || 0,
         bestScenarioLot: bestValidScenario?.validation.math.lot ?? 0,
       }),
-    [riskResult, dailyRiskRemaining, personalDailyStopHit, tradesToday, consecutiveStops, bestValidScenario]
+    [riskResult, dailyRiskRemaining, personalDailyStopHit, todayMetrics.tradesToday, todayMetrics.consecutiveStops, bestValidScenario]
   );
 
   const shiftPlanDate = (days: number) => {
@@ -187,10 +186,24 @@ export default function TradeGateApp() {
     }
 
     const imageKey = getInstrumentImageKey(activePlanDate, symbol);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[TradeGate chart upload:start]", { symbol, generatedKey: imageKey, fileName: file.name, fileSize: file.size });
+    }
+
     const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        dispatchPlanning({ type: "set-instrument-image", key: imageKey, value: reader.result });
+    reader.onload = (event) => {
+      const result = event.target?.result ?? reader.result;
+      if (typeof result === "string") {
+        dispatchPlanning({ type: "set-instrument-image", key: imageKey, value: result });
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[TradeGate chart upload:stored]", { symbol, storedKey: imageKey });
+        }
+      }
+    };
+    reader.onerror = () => {
+      setSyncStatus(`Не удалось прочитать график ${symbol}. Попробуйте другой файл.`);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[TradeGate chart upload:error]", { symbol, generatedKey: imageKey, error: reader.error?.message });
       }
     };
     reader.readAsDataURL(file);
@@ -337,10 +350,12 @@ export default function TradeGateApp() {
             <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked ? "opacity-80" : ""}`}>
               <div className="space-y-5">
                 <PermissionCard permission={permission} />
+                <TodayMetricsCard metrics={todayMetrics} />
                 <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />
                 <RiskBudgetCard
                   budgetUsd={activeDailyRiskBudget.budgetUsd}
                   plannedRiskUsed={plannedRiskUsed}
+                  realizedLossUsed={todayMetrics.realizedLossUsed}
                   remainingRisk={dailyRiskRemaining}
                   onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
                 />
@@ -380,10 +395,13 @@ export default function TradeGateApp() {
                     <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
                       <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <NumberInput label="Финрезультат за день, $" value={dailyPnl} setValue={(value) => updateRiskControl("dailyPnl", value)} />
-                        <NumberInput label="Дневной убыток, $" value={dailyLoss} setValue={(value) => updateRiskControl("dailyLoss", value)} />
-                        <NumberInput label="Сделок сегодня" value={tradesToday} setValue={(value) => updateRiskControl("tradesToday", value)} />
-                        <NumberInput label="Стопов подряд" value={consecutiveStops} setValue={(value) => updateRiskControl("consecutiveStops", value)} />
+                        <NumberInput label="Ручная поправка PnL, $" value={dailyPnl} setValue={(value) => updateRiskControl("dailyPnl", value)} />
+                        <NumberInput label="Ручная поправка убытка, $" value={dailyLoss} setValue={(value) => updateRiskControl("dailyLoss", value)} />
+                        <NumberInput label="Доп. сделок вручную" value={tradesToday} setValue={(value) => updateRiskControl("tradesToday", value)} />
+                        <NumberInput label="Доп. стопов подряд" value={consecutiveStops} setValue={(value) => updateRiskControl("consecutiveStops", value)} />
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-xs leading-relaxed text-neutral-500">
+                        Фактические PnL, сделки и стопы на Today считаются из архива выбранной даты. Поля выше оставлены как ручные заметки и не заменяют архивные метрики.
                       </div>
                       <div className="grid gap-2">
                         <Toggle label="Есть чёткий план сделки" value={plan} setValue={(value) => updateRiskControl("plan", value)} />
@@ -448,7 +466,7 @@ export default function TradeGateApp() {
                 <div className="mt-5 space-y-5">
                   {MARKET_IDEAS.map((idea) => (
                     <InstrumentCard
-                      key={idea.symbol}
+                      key={getInstrumentImageKey(activePlanDate, idea.symbol)}
                       idea={idea}
                       activePlanDate={activePlanDate}
                       plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}

@@ -106,7 +106,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           {
             ...planToArchive,
             setupName: getSetupName(state.setups, planToArchive.setupId, planToArchive.setupName),
-            archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+            archivedAt: new Date().toISOString(),
           },
           ...state.archivedPlans,
         ],
@@ -246,7 +246,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           ...plansToArchive.map((plan) => ({
             ...plan,
             setupName: getSetupName(state.setups, plan.setupId, plan.setupName),
-            archivedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+            archivedAt: new Date().toISOString(),
           })),
           ...state.archivedPlans,
         ],

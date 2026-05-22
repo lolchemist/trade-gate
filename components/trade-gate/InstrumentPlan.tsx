@@ -1,5 +1,4 @@
 import { Plus, Trash2 } from "lucide-react";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey } from "./utils";
@@ -37,8 +36,13 @@ export function InstrumentPlan({
   onRemovePlan: (id: number) => void;
 }) {
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
+  const uploadInputId = `chart-upload-${imageKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const image = instrumentImages[imageKey];
   const getIdeaText = (field: MarketIdeaField) => marketIdeaNotes[getMarketIdeaKey(activePlanDate, idea.symbol, field)] ?? idea[field];
+
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[TradeGate chart render]", { symbol: idea.symbol, previewKey: imageKey, hasImage: Boolean(image) });
+  }
 
   return (
     <div className="rounded-[2rem] border border-white/10 bg-black/20 p-4 shadow-xl">
@@ -78,7 +82,8 @@ export function InstrumentPlan({
           <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Картинка / график</div>
           {image ? (
             <div className="space-y-3">
-              <Image src={image} alt={`chart ${idea.symbol}`} width={260} height={144} unoptimized className="h-36 w-full rounded-xl object-cover" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img key={`preview:${imageKey}`} src={image} alt={`chart ${idea.symbol}`} className="h-36 w-full rounded-xl object-cover" />
               <Button onClick={() => onDeleteImage(idea.symbol)} variant="outline" className="w-full rounded-xl border border-rose-200/20 bg-rose-200/[0.06] text-xs text-rose-100 hover:bg-rose-200/[0.1]">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Удалить график
@@ -91,13 +96,23 @@ export function InstrumentPlan({
               для этого инструмента
             </div>
           )}
+          <label htmlFor={uploadInputId} className="mt-3 block text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Загрузить график
+          </label>
           <input
+            key={`upload:${imageKey}`}
+            id={uploadInputId}
             type="file"
             accept="image/*"
             aria-label={`Загрузить график ${idea.symbol}`}
             data-instrument-symbol={idea.symbol}
-            onChange={(event) => onImageChange(idea.symbol, event.target.files?.[0])}
-            className="mt-3 w-full text-xs text-neutral-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-neutral-100"
+            data-image-key={imageKey}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              onImageChange(idea.symbol, file);
+              event.currentTarget.value = "";
+            }}
+            className="mt-2 w-full text-xs text-neutral-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-neutral-100"
           />
         </div>
       </div>

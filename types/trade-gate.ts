@@ -138,6 +138,31 @@ export interface PermissionToTrade {
   instruction: string;
 }
 
+export interface TodayMetrics {
+  planDate: string;
+  dailyRiskBudget: DailyRiskBudget;
+  activeScenarioCount: number;
+  plannedRiskUsed: number;
+  realizedPnl: number;
+  realizedLossUsed: number;
+  riskUsedTotal: number;
+  remainingRisk: number;
+  dailyPnlForRiskStatus: number;
+  dailyLossForRiskStatus: number;
+  personalDailyStopHit: boolean;
+  propDailyLossClose: boolean;
+  propDailyLossHit: boolean;
+  propDailyLossUsed: number;
+  totalLossUsed: number;
+  profitProgress: number;
+  tradesToday: number;
+  consecutiveStops: number;
+  stopCount: number;
+  takeCount: number;
+  manualCloseCount: number;
+  noEntryCount: number;
+}
+
 export interface EmergencyLockState {
   revenge: boolean;
   lockUntil: string;
