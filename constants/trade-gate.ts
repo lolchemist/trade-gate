@@ -1,4 +1,4 @@
-import type { AccountSettings, MarketIdea, ResultStatus, Setup, TechnicalStatus } from "@/types/trade-gate";
+import type { AccountSettings, EntryMethod, MarketIdea, ResultStatus, Setup, TechnicalStatus } from "@/types/trade-gate";
 import { DEFAULT_INSTRUMENT_SYMBOL } from "./instrumentDefaults";
 
 export const STORAGE_KEY = "trade-gate-state-v1";
@@ -93,6 +93,31 @@ export const DEFAULT_SETUPS: Setup[] = [
   },
 ];
 
+export const DEFAULT_ENTRY_METHODS: EntryMethod[] = [
+  "Retest",
+  "Breakout",
+  "False breakout",
+  "Pullback",
+  "Momentum continuation",
+  "Liquidity sweep",
+  "Volume confirmation",
+  "News reaction",
+  "Level rejection",
+  "Wolfe wave entry",
+  "Manual confirmation",
+].map((name) => ({
+  id: name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, ""),
+  name,
+  description: "",
+  isDefault: true,
+  isActive: true,
+  createdAt: DEFAULT_SETUP_DATE,
+  updatedAt: DEFAULT_SETUP_DATE,
+}));
+
 export const MARKET_IDEAS: MarketIdea[] = [
   {
     symbol: "UKOIL.cash",
@@ -116,6 +141,7 @@ export const MARKET_IDEAS: MarketIdea[] = [
 
 export const RESULT_STATUS_LABELS: Record<ResultStatus, string> = {
   not_taken: "Входа не было",
+  no_entry: "Без входа",
   take: "Тейк",
   stop: "Стоп",
   manual_profit: "Ручное закрытие в плюс",

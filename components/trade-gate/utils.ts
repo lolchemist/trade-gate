@@ -1,6 +1,22 @@
 import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_SETUPS } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
-import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, RiskControlState, ScenarioValidation, SessionPlan, Setup, WeeklyReport, WeeklySetupReport } from "./types";
+import type {
+  ArchivedPlan,
+  DailyRiskBudget,
+  Direction,
+  EntryMethod,
+  PermissionToTrade,
+  RiskControlState,
+  ScenarioTrade,
+  ScenarioValidation,
+  SessionPlan,
+  Setup,
+  TechnicalStatus,
+  TradeExecutionStatus,
+  TradeExecutionType,
+  WeeklyReport,
+  WeeklySetupReport,
+} from "./types";
 
 export function getDateISO(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -43,14 +59,25 @@ export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_
   return {
     id,
     planDate,
+    status: "planned",
+    closedAt: undefined,
+    archivedAt: undefined,
+    closeComment: "",
+    chartImage: "",
+    chartImageKey: "",
     originScenarioId: undefined,
     carriedFromDate: undefined,
     carryCount: 0,
+    setupIds: selectedSetup?.id ? [selectedSetup.id] : [],
+    setupNames: selectedSetup?.name ? [selectedSetup.name] : [],
     setupId: selectedSetup?.id ?? "",
     setupName: selectedSetup?.name ?? "Сетап не выбран",
     symbol: normalizedSymbol,
     direction: "long",
     entryZone: "",
+    entryMethodId: "",
+    entryMethodName: "",
+    entryMethod: "",
     trigger: "",
     stop: "",
     take: "",
@@ -64,7 +91,38 @@ export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_
     tradeTake: "",
     tradeRisk: "500",
     tradePointValue: getPointValuePerLot(normalizedSymbol),
+    scenarioInvalidation: "",
+    scenarioConfidence: "70",
+    scenarioQuality: "",
+    riskBudgetAllocation: "500",
+    trades: [],
   };
+}
+
+export function createScenarioTrade(plan: SessionPlan, executionType: TradeExecutionType = "trade_1", id = createTradeId()): ScenarioTrade {
+  const math = calculateScenarioTradeMath(plan);
+
+  return {
+    id,
+    executionType,
+    status: "planned",
+    actualEntry: plan.tradeEntry,
+    actualExit: "",
+    actualSize: math.lot > 0 ? math.lot.toFixed(2) : "",
+    actualStop: plan.tradeStop,
+    actualTake: plan.tradeTake,
+    actualRisk: plan.tradeRisk,
+    actualResult: "",
+    actualRr: "",
+    executionNotes: "",
+    executedAt: "",
+    technical: "yes",
+    slippage: "",
+  };
+}
+
+export function createTradeId() {
+  return `trade-${Date.now()}-${Math.round(Math.random() * 100000)}`;
 }
 
 export function createDefaultRiskControls(overrides: Partial<RiskControlState> = {}): RiskControlState {
@@ -128,6 +186,15 @@ export function getSetupName(setups: Setup[], setupId: string, fallbackName = "�
   return setups.find((setup) => setup.id === setupId)?.name ?? fallbackName;
 }
 
+export function getSetupNames(setups: Setup[], setupIds: string[], fallbackNames: string[] = []) {
+  const names = setupIds
+    .map((setupId, index) => setups.find((setup) => setup.id === setupId)?.name ?? fallbackNames[index] ?? "")
+    .map((name) => name.trim())
+    .filter(Boolean);
+
+  return names.length > 0 ? names : fallbackNames.map((name) => name.trim()).filter(Boolean);
+}
+
 export function getActiveSetups(setups: Setup[]) {
   return setups.filter((setup) => setup.isActive);
 }
@@ -136,8 +203,24 @@ export function getPreferredSetup(setups: Setup[]) {
   return getActiveSetups(setups)[0] ?? setups[0] ?? DEFAULT_SETUPS[0];
 }
 
-export function getPlanSetupName(plan: Pick<SessionPlan, "setupId" | "setupName">) {
-  return plan.setupName || "Сетап не выбран";
+export function getPlanSetupNames(plan: Pick<SessionPlan, "setupIds" | "setupNames" | "setupId" | "setupName">) {
+  const setupNames = Array.isArray(plan.setupNames) ? plan.setupNames.map((name) => name.trim()).filter(Boolean) : [];
+  if (setupNames.length > 0) return setupNames;
+  if (plan.setupName?.trim()) return [plan.setupName.trim()];
+  return [];
+}
+
+export function getPlanSetupName(plan: Pick<SessionPlan, "setupIds" | "setupNames" | "setupId" | "setupName">) {
+  return getPlanSetupNames(plan)[0] || "Сетап не выбран";
+}
+
+export function getPlanSetupLabel(plan: Pick<SessionPlan, "setupIds" | "setupNames" | "setupId" | "setupName">) {
+  const names = getPlanSetupNames(plan);
+  return names.length > 0 ? names.join(", ") : "Сетап не выбран";
+}
+
+export function getPlanEntryMethod(plan: Pick<SessionPlan, "entryMethod" | "entryMethodName" | "trigger">) {
+  return plan.entryMethodName?.trim() || plan.entryMethod?.trim() || plan.trigger?.trim() || "";
 }
 
 export function createCustomSetup({ name, description = "", defaultInstrument = "" }: { name: string; description?: string; defaultInstrument?: string }): Setup {
@@ -161,53 +244,198 @@ export function createCustomSetup({ name, description = "", defaultInstrument = 
   };
 }
 
+export function getActiveEntryMethods(entryMethods: EntryMethod[]) {
+  return entryMethods.filter((method) => method.isActive);
+}
+
+export function createCustomEntryMethod({ name, description = "" }: { name: string; description?: string }): EntryMethod {
+  const now = new Date().toISOString();
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return {
+    id: `custom-entry-${slug || "method"}-${Date.now()}`,
+    name: name.trim(),
+    description: description.trim(),
+    isDefault: false,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function getDailyRiskBudget(budgets: Record<string, DailyRiskBudget>, planDate: string): DailyRiskBudget {
   return budgets[planDate] ?? { planDate, budgetUsd: DEFAULT_DAILY_RISK_BUDGET };
 }
 
 export function calculatePlannedRisk(plans: SessionPlan[], planDate: string) {
   return plans
-    .filter((plan) => plan.planDate === planDate)
+    .filter((plan) => plan.planDate === planDate && isScenarioPlannedExposure(plan))
     .reduce((total, plan) => total + Math.max(0, Number(plan.tradeRisk) || 0), 0);
+}
+
+const factStatuses = new Set<TradeExecutionStatus>(["executed", "take", "stop", "manual_profit", "manual_loss", "breakeven"]);
+
+export function isTradeFact(trade: ScenarioTrade) {
+  return factStatuses.has(trade.status);
+}
+
+export function isTradeCompleted(trade: ScenarioTrade) {
+  return trade.status === "take" || trade.status === "stop" || trade.status === "manual_profit" || trade.status === "manual_loss" || trade.status === "breakeven";
+}
+
+export function getScenarioTrades(plan: SessionPlan): ScenarioTrade[] {
+  return Array.isArray(plan.trades) ? plan.trades : [];
+}
+
+export function getExecutedScenarioTrades(plan: SessionPlan) {
+  return getScenarioTrades(plan).filter(isTradeFact);
+}
+
+export function getScenarioTotalResult(plan: SessionPlan) {
+  const trades = getExecutedScenarioTrades(plan);
+  if (trades.length === 0 && isScenarioClosed(plan)) return Number(plan.finalResult) || 0;
+  if (trades.length === 0) return 0;
+  return trades.reduce((total, trade) => total + (Number(trade.actualResult) || 0), 0);
+}
+
+export function getScenarioActualRr(plan: SessionPlan) {
+  const trades = getExecutedScenarioTrades(plan);
+  const rrValues = trades.map((trade) => Number(trade.actualRr)).filter((value) => Number.isFinite(value) && value > 0);
+  if (rrValues.length === 0) return 0;
+  return rrValues.reduce((total, value) => total + value, 0) / rrValues.length;
+}
+
+export function getScenarioExecutionQuality(plan: SessionPlan): TechnicalStatus {
+  const trades = getExecutedScenarioTrades(plan);
+  if (trades.length === 0) return plan.technical;
+  if (trades.every((trade) => trade.technical === "yes")) return "yes";
+  if (trades.some((trade) => trade.technical === "yes" || trade.technical === "partial")) return "partial";
+  return "no";
+}
+
+export function getScenarioResultStatus(plan: SessionPlan): TradeExecutionStatus {
+  const completedTrades = getScenarioTrades(plan).filter(isTradeCompleted);
+  if (completedTrades.length === 0) return plan.resultStatus;
+  return completedTrades[completedTrades.length - 1].status;
+}
+
+export function isScenarioClosed(plan: SessionPlan) {
+  return plan.status === "closed" || plan.status === "archived";
+}
+
+export function isScenarioPlannedExposure(plan: SessionPlan) {
+  return plan.status !== "closed" && plan.status !== "archived";
+}
+
+export function ensureScenarioCloseTrade(plan: SessionPlan): SessionPlan {
+  if (plan.resultStatus === "not_taken" || plan.resultStatus === "no_entry") return syncLegacyResultFields(plan);
+  if (getExecutedScenarioTrades(plan).length > 0) {
+    let patched = false;
+    const trades = getScenarioTrades(plan).map((trade) => {
+      if (patched || !isTradeFact(trade)) return trade;
+      patched = true;
+      return {
+        ...trade,
+        status: trade.status === "executed" ? plan.resultStatus : trade.status,
+        actualResult: trade.actualResult || plan.finalResult,
+        executionNotes: trade.executionNotes || plan.closeComment || plan.archiveComment,
+        executedAt: trade.executedAt || plan.closedAt || new Date().toISOString(),
+        technical: trade.technical || plan.technical,
+      };
+    });
+
+    return syncLegacyResultFields({ ...plan, trades });
+  }
+
+  const math = calculateScenarioTradeMath(plan);
+  const trade = createScenarioTrade(plan, "trade_1", `close-trade-${plan.id}-${Date.now()}`);
+
+  return syncLegacyResultFields({
+    ...plan,
+    trades: [
+      ...getScenarioTrades(plan),
+      {
+        ...trade,
+        status: plan.resultStatus,
+        actualResult: plan.finalResult,
+        actualRr: math.rr > 0 ? math.rr.toFixed(2) : "",
+        executionNotes: plan.closeComment || plan.archiveComment || "",
+        executedAt: plan.closedAt || new Date().toISOString(),
+        technical: plan.technical,
+      },
+    ],
+  });
+}
+
+export function syncLegacyResultFields(plan: SessionPlan): SessionPlan {
+  const trades = getScenarioTrades(plan);
+  const factTrades = trades.filter(isTradeFact);
+  if (factTrades.length === 0) return plan;
+
+  const resultStatus = getScenarioResultStatus(plan);
+  const technical = getScenarioExecutionQuality(plan);
+  const finalResult = String(getScenarioTotalResult(plan));
+
+  return {
+    ...plan,
+    resultStatus: resultStatus === "executed" || resultStatus === "planned" ? plan.resultStatus : resultStatus,
+    technical,
+    finalResult,
+  };
 }
 
 export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanDate: string): WeeklyReport {
   const { weekStart, weekEnd } = getWeekRange(activePlanDate);
   const plans = archivedPlans.filter((plan) => plan.planDate >= weekStart && plan.planDate <= weekEnd);
-  const tradePlans = plans.filter((plan) => plan.resultStatus !== "not_taken");
-  const totalPnl = tradePlans.reduce((total, plan) => total + (Number(plan.finalResult) || 0), 0);
-  const technicalTradeCount = tradePlans.filter((plan) => plan.technical === "yes").length;
-  const setupStats = getSetupStats(tradePlans);
+  const tradeFacts = getArchivedTradeFacts(plans);
+  const totalPnl = tradeFacts.reduce((total, item) => total + (Number(item.trade.actualResult) || 0), 0);
+  const technicalTradeCount = tradeFacts.filter((item) => item.trade.technical === "yes").length;
+  const setupStats = getSetupStats(tradeFacts);
 
   return {
     weekStart,
     weekEnd,
     totalPnl,
-    tradeCount: tradePlans.length,
+    tradeCount: tradeFacts.length,
     technicalTradeCount,
-    technicalTradePercentage: tradePlans.length > 0 ? Math.round((technicalTradeCount / tradePlans.length) * 100) : 0,
-    bestInstrument: bestGroup(tradePlans, (plan) => plan.symbol),
-    worstInstrument: worstGroup(tradePlans, (plan) => plan.symbol),
-    bestSetup: bestGroup(tradePlans, getPlanSetupName),
-    worstSetup: worstGroup(tradePlans, getPlanSetupName),
+    technicalTradePercentage: tradeFacts.length > 0 ? Math.round((technicalTradeCount / tradeFacts.length) * 100) : 0,
+    bestInstrument: bestTradeGroup(tradeFacts, (item) => item.plan.symbol),
+    worstInstrument: worstTradeGroup(tradeFacts, (item) => item.plan.symbol),
+    bestSetup: bestTradeGroupByLabels(tradeFacts, (item) => getPlanSetupNames(item.plan)),
+    worstSetup: worstTradeGroupByLabels(tradeFacts, (item) => getPlanSetupNames(item.plan)),
     setupStats,
-    stopCount: plans.filter((plan) => plan.resultStatus === "stop").length,
-    takeCount: plans.filter((plan) => plan.resultStatus === "take").length,
-    manualCloseCount: plans.filter((plan) => plan.resultStatus === "manual_profit" || plan.resultStatus === "manual_loss" || plan.resultStatus === "breakeven").length,
-    noEntryCount: plans.filter((plan) => plan.resultStatus === "not_taken").length,
+    stopCount: tradeFacts.filter((item) => item.trade.status === "stop").length,
+    takeCount: tradeFacts.filter((item) => item.trade.status === "take").length,
+    manualCloseCount: tradeFacts.filter((item) => item.trade.status === "manual_profit" || item.trade.status === "manual_loss" || item.trade.status === "breakeven").length,
+    noEntryCount: plans.filter((plan) => getScenarioTrades(plan).length === 0 || getScenarioTrades(plan).every((trade) => trade.status === "planned")).length,
   };
 }
 
-function getSetupStats(plans: ArchivedPlan[]): WeeklySetupReport[] {
+type ArchivedTradeFact = { plan: ArchivedPlan; trade: ScenarioTrade };
+
+function getArchivedTradeFacts(plans: ArchivedPlan[]): ArchivedTradeFact[] {
+  return plans.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ plan, trade })));
+}
+
+function getSetupStats(tradeFacts: ArchivedTradeFact[]): WeeklySetupReport[] {
   const groups = new Map<string, { totalPnl: number; tradeCount: number; technicalCount: number }>();
 
-  for (const plan of plans) {
-    const setupName = getPlanSetupName(plan);
-    const current = groups.get(setupName) ?? { totalPnl: 0, tradeCount: 0, technicalCount: 0 };
-    current.totalPnl += Number(plan.finalResult) || 0;
-    current.tradeCount += 1;
-    current.technicalCount += plan.technical === "yes" ? 1 : 0;
-    groups.set(setupName, current);
+  for (const item of tradeFacts) {
+    const setupNames = getPlanSetupNames(item.plan);
+    const labels = setupNames.length > 0 ? setupNames : ["Сетап не выбран"];
+
+    for (const setupName of labels) {
+      const current = groups.get(setupName) ?? { totalPnl: 0, tradeCount: 0, technicalCount: 0 };
+      current.totalPnl += Number(item.trade.actualResult) || 0;
+      current.tradeCount += 1;
+      current.technicalCount += item.trade.technical === "yes" ? 1 : 0;
+      groups.set(setupName, current);
+    }
   }
 
   return [...groups.entries()]
@@ -286,20 +514,44 @@ export function calculatePermission({
   };
 }
 
-function bestGroup(plans: ArchivedPlan[], getKey: (plan: ArchivedPlan) => string) {
-  return sortedGroup(plans, getKey, "best");
+function bestTradeGroup(tradeFacts: ArchivedTradeFact[], getKey: (item: ArchivedTradeFact) => string) {
+  return sortedTradeGroup(tradeFacts, getKey, "best");
 }
 
-function worstGroup(plans: ArchivedPlan[], getKey: (plan: ArchivedPlan) => string) {
-  return sortedGroup(plans, getKey, "worst");
+function worstTradeGroup(tradeFacts: ArchivedTradeFact[], getKey: (item: ArchivedTradeFact) => string) {
+  return sortedTradeGroup(tradeFacts, getKey, "worst");
 }
 
-function sortedGroup(plans: ArchivedPlan[], getKey: (plan: ArchivedPlan) => string, mode: "best" | "worst") {
+function bestTradeGroupByLabels(tradeFacts: ArchivedTradeFact[], getLabels: (item: ArchivedTradeFact) => string[]) {
+  return sortedTradeGroupByLabels(tradeFacts, getLabels, "best");
+}
+
+function worstTradeGroupByLabels(tradeFacts: ArchivedTradeFact[], getLabels: (item: ArchivedTradeFact) => string[]) {
+  return sortedTradeGroupByLabels(tradeFacts, getLabels, "worst");
+}
+
+function sortedTradeGroup(tradeFacts: ArchivedTradeFact[], getKey: (item: ArchivedTradeFact) => string, mode: "best" | "worst") {
   const totals = new Map<string, number>();
 
-  for (const plan of plans) {
-    const key = getKey(plan);
-    totals.set(key, (totals.get(key) ?? 0) + (Number(plan.finalResult) || 0));
+  for (const item of tradeFacts) {
+    const key = getKey(item);
+    totals.set(key, (totals.get(key) ?? 0) + (Number(item.trade.actualResult) || 0));
+  }
+
+  const sorted = [...totals.entries()].sort((a, b) => (mode === "best" ? b[1] - a[1] : a[1] - b[1]));
+  if (!sorted[0]) return "—";
+  return `${sorted[0][0]} (${formatCurrency(sorted[0][1])})`;
+}
+
+function sortedTradeGroupByLabels(tradeFacts: ArchivedTradeFact[], getLabels: (item: ArchivedTradeFact) => string[], mode: "best" | "worst") {
+  const totals = new Map<string, number>();
+
+  for (const item of tradeFacts) {
+    const labels = getLabels(item);
+    const safeLabels = labels.length > 0 ? labels : ["Сетап не выбран"];
+    for (const label of safeLabels) {
+      totals.set(label, (totals.get(label) ?? 0) + (Number(item.trade.actualResult) || 0));
+    }
   }
 
   const sorted = [...totals.entries()].sort((a, b) => (mode === "best" ? b[1] - a[1] : a[1] - b[1]));
@@ -359,9 +611,11 @@ export function validateScenarioPlan(item: SessionPlan): ScenarioValidation {
 
   if (!item.symbol) reasons.push("не выбран инструмент");
   if (!item.direction) reasons.push("не выбрано направление");
-  if (!item.setupId) reasons.push("не выбран сетап");
+  const setupCount = getPlanSetupNames(item).length;
+  if (setupCount === 0) reasons.push("не выбран сетап");
+  if (setupCount > 5) reasons.push("выбрано больше 5 сетапов");
   if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнена точка входа");
-  if (!item.trigger) reasons.push("не заполнен триггер");
+  if (!getPlanEntryMethod(item)) reasons.push("не выбран способ входа");
   if (!item.stop || !item.tradeStop) reasons.push("не заполнен технический стоп");
   if (!item.take || !item.tradeTake) reasons.push("не заполнен технический тейк");
   if ((Number(item.tradeRisk) || 0) <= 0) reasons.push("риск на сделку не задан");

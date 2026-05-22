@@ -1,13 +1,30 @@
 import { useReducer } from "react";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS } from "@/constants/trade-gate";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_ENTRY_METHODS, DEFAULT_SETUPS } from "@/constants/trade-gate";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
-import { createCustomSetup, createDefaultRiskControls, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPreferredSetup, getRiskControlsForDate, getSetupName } from "@/components/trade-gate/utils";
-import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, PlanningState, RiskControlField, RiskControlState, SessionPlan, Setup } from "@/types/trade-gate";
+import {
+  createCustomEntryMethod,
+  createCustomSetup,
+  createDefaultRiskControls,
+  createScenarioTrade,
+  createSessionPlan,
+  ensureScenarioCloseTrade,
+  getInitialPlanDate,
+  getInstrumentImageKey,
+  getPlanEntryMethod,
+  getPlanSetupNames,
+  getPreferredSetup,
+  getRiskControlsForDate,
+  getSetupNames,
+  syncLegacyResultFields,
+  validateScenarioPlan,
+} from "@/components/trade-gate/utils";
+import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, PlanningState, RiskControlField, RiskControlState, ScenarioTrade, SessionPlan, Setup, TradeExecutionType } from "@/types/trade-gate";
 
 const initialPlanDate = getInitialPlanDate();
 
 export const initialPlanningState: PlanningState = {
   setups: DEFAULT_SETUPS,
+  entryMethods: DEFAULT_ENTRY_METHODS,
   sessionPlans: [createSessionPlan(initialPlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, DEFAULT_SETUPS[0])],
   archivedPlans: [],
   instrumentImages: {},
@@ -33,8 +50,12 @@ export type PlanningAction =
   | { type: "set-sync-key"; syncKey: string }
   | { type: "add-plan"; symbol: string }
   | { type: "update-plan"; id: number; field: EditablePlanField; value: SessionPlan[EditablePlanField] }
+  | { type: "add-trade"; scenarioId: number; executionType: TradeExecutionType }
+  | { type: "update-trade"; scenarioId: number; tradeId: string; field: EditableTradeField; value: ScenarioTrade[EditableTradeField] }
+  | { type: "remove-trade"; scenarioId: number; tradeId: string }
   | { type: "remove-plan"; id: number }
-  | { type: "archive-plan"; id: number }
+  | { type: "close-plan"; id: number }
+  | { type: "reopen-plan"; id: number }
   | { type: "restore-plan"; id: number }
   | { type: "carry-plan"; id: number; nextPlanDate: string; mode: CarryScenarioMode }
   | { type: "set-instrument-image"; key: string; value: string }
@@ -49,6 +70,9 @@ export type PlanningAction =
   | { type: "add-setup"; name: string; description: string; defaultInstrument: string }
   | { type: "update-setup"; id: string; changes: Partial<Pick<Setup, "name" | "description" | "defaultInstrument" | "isActive">> }
   | { type: "delete-setup"; id: string }
+  | { type: "add-entry-method"; name: string; description: string }
+  | { type: "update-entry-method"; id: string; changes: Partial<Pick<EntryMethod, "name" | "description" | "isActive">> }
+  | { type: "delete-entry-method"; id: string }
   | { type: "close-trading-day"; planDate: string; nextPlanDate: string; carryPlanIds?: number[]; carryMode?: CarryScenarioMode }
   | { type: "reset-trading-plan"; activePlanDate: string }
   | { type: "reset-session"; activePlanDate: string };
@@ -59,6 +83,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
       return {
         ...state,
         setups: action.payload.setups ?? state.setups,
+        entryMethods: action.payload.entryMethods ?? state.entryMethods,
         sessionPlans: action.payload.sessionPlans ?? state.sessionPlans,
         archivedPlans: action.payload.archivedPlans ?? state.archivedPlans,
         instrumentImages: action.payload.instrumentImages ?? state.instrumentImages,
@@ -91,33 +116,75 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             const symbol = normalizeInstrumentSymbol(String(action.value));
             return { ...plan, symbol, tradePointValue: getPointValuePerLot(symbol) };
           }
+          if (action.field === "setupIds") {
+            const setupIds = (Array.isArray(action.value) ? action.value : []).filter((value): value is string => typeof value === "string").slice(0, 5);
+            const setupNames = getSetupNames(state.setups, setupIds, plan.setupNames);
+            return { ...plan, setupIds, setupNames, setupId: setupIds[0] ?? "", setupName: setupNames[0] ?? "" };
+          }
+          if (action.field === "entryMethodId") {
+            const entryMethodId = String(action.value ?? "");
+            const entryMethodName = state.entryMethods.find((method) => method.id === entryMethodId)?.name ?? "";
+            return { ...plan, entryMethodId, entryMethodName, entryMethod: entryMethodName, trigger: entryMethodName };
+          }
+          if (action.field === "entryMethod" || action.field === "entryMethodName") {
+            const entryMethodName = String(action.value ?? "");
+            const matchedMethod = state.entryMethods.find((method) => method.name.toLowerCase() === entryMethodName.toLowerCase());
+            return { ...plan, entryMethodId: matchedMethod?.id ?? "", entryMethodName, entryMethod: entryMethodName, trigger: entryMethodName };
+          }
           return { ...plan, [action.field]: action.value } as SessionPlan;
+        }),
+      };
+    case "add-trade":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => {
+          if (plan.id !== action.scenarioId || !validateScenarioPlan(plan).valid) return plan;
+          const trades = Array.isArray(plan.trades) ? plan.trades : [];
+          const executionType = trades.length === 0 ? "trade_1" : action.executionType;
+          return { ...plan, status: plan.status === "planned" ? "active" : plan.status, trades: [...trades, createScenarioTrade(plan, executionType)] };
+        }),
+      };
+    case "update-trade":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => {
+          if (plan.id !== action.scenarioId) return plan;
+          const trades = (Array.isArray(plan.trades) ? plan.trades : []).map((trade) => {
+            if (trade.id !== action.tradeId) return trade;
+            const nextTrade = { ...trade, [action.field]: action.value } as ScenarioTrade;
+            if (action.field === "status" && action.value !== "planned" && !nextTrade.executedAt) {
+              return { ...nextTrade, executedAt: new Date().toISOString() };
+            }
+            return nextTrade;
+          });
+          return syncLegacyResultFields({ ...plan, trades });
+        }),
+      };
+    case "remove-trade":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => {
+          if (plan.id !== action.scenarioId) return plan;
+          return syncLegacyResultFields({ ...plan, trades: (Array.isArray(plan.trades) ? plan.trades : []).filter((trade) => trade.id !== action.tradeId) });
         }),
       };
     case "remove-plan":
       return { ...state, sessionPlans: state.sessionPlans.filter((plan) => plan.id !== action.id) };
-    case "archive-plan": {
-      const planToArchive = state.sessionPlans.find((plan) => plan.id === action.id);
-      if (!planToArchive) return state;
-
+    case "close-plan":
       return {
         ...state,
-        archivedPlans: [
-          {
-            ...planToArchive,
-            setupName: getSetupName(state.setups, planToArchive.setupId, planToArchive.setupName),
-            archivedAt: new Date().toISOString(),
-          },
-          ...state.archivedPlans,
-        ],
-        sessionPlans: state.sessionPlans.filter((plan) => plan.id !== action.id),
+        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id ? ensureScenarioCloseTrade({ ...plan, status: "closed", closedAt: plan.closedAt || new Date().toISOString() }) : plan)),
       };
-    }
+    case "reopen-plan":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id ? { ...plan, status: "active", closedAt: "", archivedAt: "" } : plan)),
+      };
     case "restore-plan": {
       const planToRestore = state.archivedPlans.find((plan) => plan.id === action.id);
       if (!planToRestore) return state;
 
-      const restoredPlan: SessionPlan = { ...planToRestore };
+      const restoredPlan: SessionPlan = { ...planToRestore, status: "closed" };
       delete (restoredPlan as SessionPlan & Partial<ArchivedPlan>).archivedAt;
       return {
         ...state,
@@ -213,6 +280,19 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     }
     case "delete-setup":
       return { ...state, setups: state.setups.filter((setup) => setup.id !== action.id || setup.isDefault) };
+    case "add-entry-method": {
+      const entryMethod = createCustomEntryMethod({ name: action.name, description: action.description });
+      return { ...state, entryMethods: [...state.entryMethods, entryMethod] };
+    }
+    case "update-entry-method": {
+      const now = new Date().toISOString();
+      return {
+        ...state,
+        entryMethods: state.entryMethods.map((method) => (method.id === action.id ? { ...method, ...action.changes, updatedAt: now } : method)),
+      };
+    }
+    case "delete-entry-method":
+      return { ...state, entryMethods: state.entryMethods.filter((method) => method.id !== action.id || method.isDefault) };
     case "close-trading-day": {
       const plansToArchive = state.sessionPlans.filter((plan) => plan.planDate === action.planDate);
       const remainingSessionPlans = state.sessionPlans.filter((plan) => plan.planDate !== action.planDate);
@@ -243,11 +323,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             ? [...carriedSymbols].reduce((images, symbol) => copyInstrumentImage(images, action.planDate, action.nextPlanDate, symbol), state.instrumentImages)
             : state.instrumentImages,
         archivedPlans: [
-          ...plansToArchive.map((plan) => ({
-            ...plan,
-            setupName: getSetupName(state.setups, plan.setupId, plan.setupName),
-            archivedAt: new Date().toISOString(),
-          })),
+          ...plansToArchive.map((plan) => archiveScenarioForDay(plan, state, action.planDate)),
           ...state.archivedPlans,
         ],
         sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
@@ -277,6 +353,47 @@ function ensureRiskControlsForDate(riskControlsByDate: PlanningState["riskContro
   return { ...riskControlsByDate, [planDate]: createDefaultRiskControls({ updatedAt: new Date().toISOString() }) };
 }
 
+function preserveScenarioLabels(plan: SessionPlan, setups: Setup[], entryMethods: EntryMethod[]): SessionPlan {
+  const setupIds = Array.isArray(plan.setupIds) ? plan.setupIds.slice(0, 5) : [];
+  const setupNames = getSetupNames(setups, setupIds, getPlanSetupNames(plan)).slice(0, 5);
+  const entryMethodName = getPlanEntryMethod(plan);
+  const entryMethodId = plan.entryMethodId || entryMethods.find((method) => method.name.toLowerCase() === entryMethodName.toLowerCase())?.id || "";
+
+  return syncLegacyResultFields({
+    ...plan,
+    setupIds,
+    setupNames,
+    setupId: setupIds[0] ?? "",
+    setupName: setupNames[0] ?? "",
+    entryMethodId,
+    entryMethodName,
+    entryMethod: entryMethodName,
+    trigger: plan.trigger || entryMethodName,
+  });
+}
+
+function archiveScenarioForDay(plan: SessionPlan, state: PlanningState, planDate: string): ArchivedPlan {
+  const archivedAt = new Date().toISOString();
+  const chartImageKey = getInstrumentImageKey(planDate, plan.symbol);
+  const chartImage = state.instrumentImages[chartImageKey] ?? plan.chartImage ?? "";
+  const closedPlan = ensureScenarioCloseTrade({
+    ...plan,
+    status: "archived",
+    closedAt: plan.closedAt || archivedAt,
+    archivedAt,
+    chartImage,
+    chartImageKey,
+  });
+
+  return {
+    ...preserveScenarioLabels(closedPlan, state.setups, state.entryMethods),
+    status: "archived",
+    archivedAt,
+    chartImage,
+    chartImageKey,
+  };
+}
+
 function carryPlanToDate(state: PlanningState, planId: number, nextPlanDate: string, mode: CarryScenarioMode): PlanningState {
   const plan = state.sessionPlans.find((item) => item.id === planId);
   if (!plan) return state;
@@ -299,6 +416,12 @@ function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryS
     ...plan,
     id,
     planDate: nextPlanDate,
+    status: "planned",
+    closedAt: "",
+    archivedAt: "",
+    closeComment: "",
+    chartImage: "",
+    chartImageKey: "",
     originScenarioId: plan.originScenarioId ?? plan.id,
     carriedFromDate: plan.planDate,
     carryCount: (Number(plan.carryCount) || 0) + 1,
@@ -306,6 +429,7 @@ function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryS
     technical: "yes",
     finalResult: "",
     archiveComment: "",
+    trades: [],
     tradeEntry: withTradePlan ? plan.tradeEntry : "",
     tradeStop: withTradePlan ? plan.tradeStop : "",
     tradeTake: withTradePlan ? plan.tradeTake : "",

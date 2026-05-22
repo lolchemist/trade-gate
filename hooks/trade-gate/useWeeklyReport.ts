@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { calculateWeeklyReport, getWeekRange } from "@/components/trade-gate/utils";
-import type { ArchivedPlan } from "@/types/trade-gate";
+import { calculateWeeklyReport, getExecutedScenarioTrades, getPlanSetupNames, getWeekRange } from "@/components/trade-gate/utils";
+import type { ArchivedPlan, ScenarioTrade } from "@/types/trade-gate";
 
 export function useWeeklyReport(archivedPlans: ArchivedPlan[], activePlanDate: string, emergencyNotes: Record<string, string>) {
   return useMemo(() => {
@@ -13,22 +13,41 @@ export function useWeeklyReport(archivedPlans: ArchivedPlan[], activePlanDate: s
 
 function getAnalyticsStats(archivedPlans: ArchivedPlan[], activePlanDate: string, emergencyNotes: Record<string, string>) {
   const { weekStart, weekEnd } = getWeekRange(activePlanDate);
-  const plans = archivedPlans.filter((plan) => plan.planDate >= weekStart && plan.planDate <= weekEnd && plan.resultStatus !== "not_taken");
+  const plans = archivedPlans.filter((plan) => plan.planDate >= weekStart && plan.planDate <= weekEnd);
+  const tradeFacts = plans.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ plan, trade })));
 
   return {
-    byInstrument: groupPnl(plans, (plan) => plan.symbol),
-    bySetup: groupPnl(plans, (plan) => plan.setupName || "Сетап не выбран"),
-    mistakeCount: plans.filter((plan) => plan.technical === "no").length,
+    byInstrument: groupTradePnl(tradeFacts, (item) => item.plan.symbol),
+    bySetup: groupTradePnlByLabels(tradeFacts, (item) => getPlanSetupNames(item.plan)),
+    mistakeCount: tradeFacts.filter((item) => item.trade.technical === "no").length,
     revengeNoteCount: Object.entries(emergencyNotes).filter(([date, note]) => date >= weekStart && date <= weekEnd && note.trim().length > 0).length,
   };
 }
 
-function groupPnl(plans: ArchivedPlan[], getLabel: (plan: ArchivedPlan) => string) {
+type TradeFact = { plan: ArchivedPlan; trade: ScenarioTrade };
+
+function groupTradePnl(trades: TradeFact[], getLabel: (item: TradeFact) => string) {
   const totals = new Map<string, number>();
 
-  for (const plan of plans) {
-    const label = getLabel(plan);
-    totals.set(label, (totals.get(label) ?? 0) + (Number(plan.finalResult) || 0));
+  for (const item of trades) {
+    const label = getLabel(item);
+    totals.set(label, (totals.get(label) ?? 0) + (Number(item.trade.actualResult) || 0));
+  }
+
+  return [...totals.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function groupTradePnlByLabels(trades: TradeFact[], getLabels: (item: TradeFact) => string[]) {
+  const totals = new Map<string, number>();
+
+  for (const item of trades) {
+    const labels = getLabels(item);
+    const safeLabels = labels.length > 0 ? labels : ["Сетап не выбран"];
+    for (const label of safeLabels) {
+      totals.set(label, (totals.get(label) ?? 0) + (Number(item.trade.actualResult) || 0));
+    }
   }
 
   return [...totals.entries()]

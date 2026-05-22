@@ -1,9 +1,9 @@
 import { Plus, RadioTower, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
-import { getInstrumentImageKey, getMarketIdeaKey, isPlanReady } from "./utils";
+import { getInstrumentImageKey, getMarketIdeaKey, isPlanReady, isScenarioPlannedExposure } from "./utils";
 import { MetricTile, ProgressMeter, StatusPill, TerminalPanel } from "./terminal-ui";
-import type { CarryScenarioMode, EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
+import type { CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, Setup, TradeExecutionType } from "./types";
 
 const instrumentAccents: Record<string, { title: string; tone: "emerald" | "amber" | "cyan"; gradient: string }> = {
   "UKOIL.cash": { title: "Энергия", tone: "emerald", gradient: "from-emerald-200/[0.09] via-transparent to-sky-100/[0.05]" },
@@ -16,6 +16,7 @@ export function InstrumentCard({
   activePlanDate,
   plans,
   setups,
+  entryMethods,
   instrumentImages,
   marketIdeaNotes,
   onAddScenario,
@@ -23,7 +24,11 @@ export function InstrumentCard({
   onImageChange,
   onDeleteImage,
   onUpdatePlan,
-  onArchivePlan,
+  onAddTrade,
+  onUpdateTrade,
+  onRemoveTrade,
+  onClosePlan,
+  onReopenPlan,
   onCarryPlan,
   onRemovePlan,
 }: {
@@ -31,6 +36,7 @@ export function InstrumentCard({
   activePlanDate: string;
   plans: SessionPlan[];
   setups: Setup[];
+  entryMethods: EntryMethod[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   onAddScenario: (symbol: string) => void;
@@ -38,7 +44,11 @@ export function InstrumentCard({
   onImageChange: (symbol: string, file: File | undefined) => void;
   onDeleteImage: (symbol: string) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
-  onArchivePlan: (id: number) => void;
+  onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
+  onUpdateTrade: <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => void;
+  onRemoveTrade: (scenarioId: number, tradeId: string) => void;
+  onClosePlan: (id: number) => void;
+  onReopenPlan: (id: number) => void;
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
 }) {
@@ -47,7 +57,7 @@ export function InstrumentCard({
   const uploadInputId = `chart-upload-${imageKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const image = instrumentImages[imageKey];
   const readyCount = plans.filter(isPlanReady).length;
-  const riskAllocated = plans.reduce((sum, plan) => sum + (Number(plan.tradeRisk) || 0), 0);
+  const riskAllocated = plans.filter(isScenarioPlannedExposure).reduce((sum, plan) => sum + (Number(plan.tradeRisk) || 0), 0);
   const readiness = plans.length > 0 ? Math.round((readyCount / plans.length) * 100) : 0;
   const getIdeaText = (field: MarketIdeaField) => marketIdeaNotes[getMarketIdeaKey(activePlanDate, idea.symbol, field)] ?? idea[field];
 
@@ -146,7 +156,21 @@ export function InstrumentCard({
           </div>
         ) : (
           plans.map((item, index) => (
-            <ScenarioCard key={item.id} item={item} index={index} setups={setups} onUpdate={onUpdatePlan} onArchive={onArchivePlan} onCarry={onCarryPlan} onRemove={onRemovePlan} />
+            <ScenarioCard
+              key={item.id}
+              item={item}
+              index={index}
+              setups={setups}
+              entryMethods={entryMethods}
+              onUpdate={onUpdatePlan}
+              onAddTrade={onAddTrade}
+              onUpdateTrade={onUpdateTrade}
+              onRemoveTrade={onRemoveTrade}
+              onClose={onClosePlan}
+              onReopen={onReopenPlan}
+              onCarry={onCarryPlan}
+              onRemove={onRemovePlan}
+            />
           ))
         )}
       </div>

@@ -2,6 +2,7 @@ export type Direction = "long" | "short" | "both";
 
 export type ResultStatus =
   | "not_taken"
+  | "no_entry"
   | "take"
   | "stop"
   | "manual_profit"
@@ -12,7 +13,15 @@ export type TechnicalStatus = "yes" | "no" | "partial";
 
 export type GateStatus = "OK" | "CAUTION" | "DANGER" | "LOCKED";
 
+export type TradeExecutionType = "trade_1" | "re_entry";
+
+export type TradeExecutionStatus = "planned" | "executed" | ResultStatus;
+
+export type ScenarioLifecycleStatus = "planned" | "active" | "closed" | "archived";
+
 export type EditablePlanField = keyof SessionPlan;
+
+export type EditableTradeField = keyof ScenarioTrade;
 
 export type PersistedImages = Record<string, string>;
 
@@ -25,14 +34,28 @@ export type CarryScenarioMode = "scenario" | "scenario_image" | "scenario_trade_
 export interface SessionPlan {
   id: number;
   planDate: string;
+  status: ScenarioLifecycleStatus;
+  closedAt?: string;
+  archivedAt?: string;
+  closeComment?: string;
+  chartImage?: string;
+  chartImageKey?: string;
   originScenarioId?: number;
   carriedFromDate?: string;
   carryCount: number;
+  setupIds: string[];
+  setupNames: string[];
+  /** Legacy field kept for old saved states. New logic uses setupIds/setupNames. */
   setupId: string;
+  /** Legacy field kept for old saved states. New logic uses setupIds/setupNames. */
   setupName: string;
   symbol: string;
   direction: Direction;
   entryZone: string;
+  entryMethodId: string;
+  entryMethodName: string;
+  entryMethod: string;
+  /** Legacy field kept for old saved states. New logic uses entryMethod. */
   trigger: string;
   stop: string;
   take: string;
@@ -46,10 +69,33 @@ export interface SessionPlan {
   tradeTake: string;
   tradeRisk: string;
   tradePointValue: string;
+  scenarioInvalidation: string;
+  scenarioConfidence: string;
+  scenarioQuality: string;
+  riskBudgetAllocation: string;
+  trades: ScenarioTrade[];
 }
 
 export interface ArchivedPlan extends SessionPlan {
   archivedAt: string;
+}
+
+export interface ScenarioTrade {
+  id: string;
+  executionType: TradeExecutionType;
+  status: TradeExecutionStatus;
+  actualEntry: string;
+  actualExit: string;
+  actualSize: string;
+  actualStop: string;
+  actualTake: string;
+  actualRisk: string;
+  actualResult: string;
+  actualRr: string;
+  executionNotes: string;
+  executedAt: string;
+  technical: TechnicalStatus;
+  slippage: string;
 }
 
 export interface MarketIdea {
@@ -64,6 +110,16 @@ export interface Setup {
   name: string;
   description?: string;
   defaultInstrument?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EntryMethod {
+  id: string;
+  name: string;
+  description?: string;
   isDefault: boolean;
   isActive: boolean;
   createdAt: string;
@@ -170,6 +226,7 @@ export interface EmergencyLockState {
 
 export interface PlanningState {
   setups: Setup[];
+  entryMethods: EntryMethod[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
   instrumentImages: PersistedImages;
@@ -186,6 +243,7 @@ export interface PlanningState {
 
 export interface CloudPayload {
   setups: Setup[];
+  entryMethods: EntryMethod[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
   instrumentImages: PersistedImages;

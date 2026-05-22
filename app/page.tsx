@@ -9,6 +9,7 @@ import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard
 import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
+import { EntryMethodPlaybookCard } from "@/components/trade-gate/EntryMethodPlaybookCard";
 import { HeroStatus } from "@/components/trade-gate/HeroStatus";
 import { InstrumentCard } from "@/components/trade-gate/InstrumentCard";
 import { LockOverlay } from "@/components/trade-gate/LockOverlay";
@@ -31,26 +32,33 @@ import {
   calculatePermission,
   formatPlanDate,
   formatSyncStatus,
-  getActiveSetups,
   getDateISO,
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
   getNextDateISO,
+  getPlanEntryMethod,
+  getPlanSetupLabel,
   getRiskControlsForDate,
-  getSetupName,
+  getScenarioActualRr,
+  getScenarioExecutionQuality,
+  getScenarioTotalResult,
+  getScenarioTrades,
   isPlanReady,
 } from "@/components/trade-gate/utils";
 import type {
   ArchivedPlan,
   CarryScenarioMode,
   EditablePlanField,
+  EditableTradeField,
   MarketIdeaField,
   MarketIdeaNotes,
   PersistedImages,
   RiskControlField,
   RiskControlState,
+  ScenarioTrade,
   SessionPlan,
+  TradeExecutionType,
 } from "@/components/trade-gate/types";
 
 type AppTab = "today" | "plan" | "journal" | "analytics" | "settings";
@@ -67,7 +75,7 @@ const carryModeOptions: { id: CarryScenarioMode; title: string; detail: string }
   {
     id: "scenario",
     title: "Только сценарий",
-    detail: "Перенести сетап, уровни, триггер и заметки. Расчёт сделки будет очищен.",
+    detail: "Перенести сетапы, уровни, способ входа и заметки. Расчёт сделки будет очищен.",
   },
   {
     id: "scenario_image",
@@ -92,14 +100,28 @@ export default function TradeGateApp() {
   const [closeCarryIds, setCloseCarryIds] = useState<number[]>([]);
   const [closeCarryMode, setCloseCarryMode] = useState<CarryScenarioMode>("scenario_trade_plan");
 
-  const { setups, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, riskControlsByDate, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
+  const { setups, entryMethods, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, riskControlsByDate, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
   const activeRiskControls = getRiskControlsForDate(riskControlsByDate, activePlanDate);
   const { sleep, anxiety, urge, anger, dailyPnl, dailyLoss, tradesToday, consecutiveStops, plan, newsChecked, stopSet, revenge, lockUntil } = activeRiskControls;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
   const nextPlanDate = getNextDateISO(activePlanDate);
   const nextPlanDateLabel = formatPlanDate(nextPlanDate);
   const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
-  const activeSetups = useMemo(() => getActiveSetups(setups), [setups]);
+  const closeDaySummary = useMemo(() => {
+    const closedScenarios = activePlansForDate.filter((item) => item.status === "closed");
+    const noEntryScenarios = activePlansForDate.filter((item) => item.resultStatus === "no_entry");
+    const totalPnl = activePlansForDate.reduce((total, item) => total + getScenarioTotalResult(item), 0);
+    const executedTrades = activePlansForDate.flatMap(getScenarioTrades).filter((trade) => trade.status !== "planned");
+
+    return {
+      scenarioCount: activePlansForDate.length,
+      closedCount: closedScenarios.length,
+      noEntryCount: noEntryScenarios.length,
+      totalPnl,
+      executedTradeCount: executedTrades.length,
+      unfinishedCount: activePlansForDate.filter((item) => item.status !== "closed").length,
+    };
+  }, [activePlansForDate]);
   const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
   const plannedRiskUsed = todayMetrics.plannedRiskUsed;
@@ -174,6 +196,18 @@ export default function TradeGateApp() {
     dispatchPlanning({ type: "update-plan", id, field, value });
   };
 
+  const addScenarioTrade = (scenarioId: number, executionType: TradeExecutionType) => {
+    dispatchPlanning({ type: "add-trade", scenarioId, executionType });
+  };
+
+  const updateScenarioTrade = <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => {
+    dispatchPlanning({ type: "update-trade", scenarioId, tradeId, field, value });
+  };
+
+  const removeScenarioTrade = (scenarioId: number, tradeId: string) => {
+    dispatchPlanning({ type: "remove-trade", scenarioId, tradeId });
+  };
+
   const updateMarketIdeaText = (symbol: string, field: MarketIdeaField, value: string) => {
     dispatchPlanning({ type: "set-market-idea-note", key: getMarketIdeaKey(activePlanDate, symbol, field), value });
   };
@@ -235,12 +269,14 @@ export default function TradeGateApp() {
     setSyncStatus(`Торговый план для ${activePlanDate} сброшен`);
   };
 
-  const archiveScenario = (id: number) => {
-    dispatchPlanning({ type: "archive-plan", id });
-    const shouldResetControls = window.confirm("Сбросить контрольные вводы после сделки?");
-    if (shouldResetControls) {
-      dispatchPlanning({ type: "reset-risk-controls", planDate: activePlanDate });
-    }
+  const closeScenario = (id: number) => {
+    dispatchPlanning({ type: "close-plan", id });
+    setSyncStatus("Сделка закрыта внутри дня. Архив будет обновлён при закрытии торгового дня.");
+  };
+
+  const reopenScenario = (id: number) => {
+    dispatchPlanning({ type: "reopen-plan", id });
+    setSyncStatus("Сценарий возвращён в план");
   };
 
   const carryScenario = (id: number, mode: CarryScenarioMode) => {
@@ -255,12 +291,17 @@ export default function TradeGateApp() {
       return;
     }
 
-    setCloseCarryIds(activePlansForDate.map((planItem) => planItem.id));
+    setCloseCarryIds(activePlansForDate.filter((planItem) => planItem.status !== "closed").map((planItem) => planItem.id));
     setCloseCarryMode("scenario_trade_plan");
     setCloseDialogOpen(true);
   };
 
   const closeTradingDay = () => {
+    const confirmed = window.confirm(
+      `Закрыть торговый день ${activePlanDate}?\n\nБудет архивировано сценариев: ${closeDaySummary.scenarioCount}\nЗакрытых сделок: ${closeDaySummary.closedCount}\nФакт PnL: $${closeDaySummary.totalPnl.toFixed(0)}\nБез входа: ${closeDaySummary.noEntryCount}\nНезавершённых к переносу: ${closeCarryIds.length}`
+    );
+    if (!confirmed) return;
+
     const action: PlanningAction = { type: "close-trading-day", planDate: activePlanDate, nextPlanDate, carryPlanIds: closeCarryIds, carryMode: closeCarryMode };
     const nextPlanning = planningReducer(planning, action);
     dispatchPlanning(action);
@@ -470,7 +511,8 @@ export default function TradeGateApp() {
                       idea={idea}
                       activePlanDate={activePlanDate}
                       plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
-                      setups={activeSetups}
+                      setups={setups}
+                      entryMethods={entryMethods}
                       instrumentImages={instrumentImages as PersistedImages}
                       marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
                       onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
@@ -478,7 +520,11 @@ export default function TradeGateApp() {
                       onImageChange={handleInstrumentImage}
                       onDeleteImage={deleteInstrumentImage}
                       onUpdatePlan={updateSessionPlan}
-                      onArchivePlan={archiveScenario}
+                      onAddTrade={addScenarioTrade}
+                      onUpdateTrade={updateScenarioTrade}
+                      onRemoveTrade={removeScenarioTrade}
+                      onClosePlan={closeScenario}
+                      onReopenPlan={reopenScenario}
                       onCarryPlan={carryScenario}
                       onRemovePlan={(id) => dispatchPlanning({ type: "remove-plan", id })}
                     />
@@ -525,7 +571,7 @@ export default function TradeGateApp() {
                 <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив торговых планов" />
                 {archivedPlans.length === 0 ? (
                   <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-500">
-                    Архив пока пуст. После сессии заполни итог и нажми “В архив”.
+                    Архив пока пуст. Сценарии попадут сюда после кнопки “Закрыть торговый день”.
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -548,18 +594,56 @@ export default function TradeGateApp() {
                         </div>
 
                         <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
-                          <ArchiveField title="Сетап" value={getSetupName(setups, item.setupId, item.setupName)} />
-                          <ArchiveField title="Триггер" value={item.trigger} />
-                          <ArchiveField title="Стоп" value={item.stop} />
-                          <ArchiveField title="Тейк" value={item.take} />
+                          <ArchiveField title="Сетапы" value={getPlanSetupLabel(item)} />
+                          <ArchiveField title="Способ входа" value={getPlanEntryMethod(item) || "—"} />
+                          <ArchiveField title="Плановый R:R" value={(() => {
+                            const entry = Number(item.tradeEntry);
+                            const stop = Number(item.tradeStop);
+                            const take = Number(item.tradeTake);
+                            const rr = Math.abs(entry - stop) > 0 ? Math.abs(take - entry) / Math.abs(entry - stop) : 0;
+                            return rr > 0 ? `1:${rr.toFixed(2)}` : "—";
+                          })()} />
+                          <ArchiveField title="Факт R:R" value={getScenarioActualRr(item) > 0 ? `1:${getScenarioActualRr(item).toFixed(2)}` : "—"} />
                         </div>
 
                         <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
-                          <ArchiveField title="Финрезультат" value={item.finalResult ? `$${item.finalResult}` : "—"} />
-                          <ArchiveField title="Итог" value={RESULT_STATUS_LABELS[item.resultStatus] ?? item.resultStatus} />
-                          <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[item.technical] ?? item.technical} />
-                          <ArchiveField title="Отмена сценария" value={item.note || "—"} />
+                          <ArchiveField title="Итог сценария" value={`$${getScenarioTotalResult(item).toFixed(0)}`} />
+                          <ArchiveField title="Исполнений" value={String(getScenarioTrades(item).length)} />
+                          <ArchiveField title="Качество исполнения" value={TECHNICAL_STATUS_LABELS[getScenarioExecutionQuality(item)] ?? getScenarioExecutionQuality(item)} />
+                          <ArchiveField title="Закрыта" value={item.closedAt || "—"} />
                         </div>
+
+                        <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                          <ArchiveField title="Отмена сценария" value={item.note || "—"} />
+                          <ArchiveField title="Комментарий закрытия" value={item.closeComment || "—"} />
+                          <ArchiveField title="Ключ графика" value={item.chartImageKey || "—"} />
+                        </div>
+
+                        {item.chartImage && (
+                          <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={item.chartImage} alt={`Архивный график ${item.symbol}`} className="max-h-72 w-full rounded-lg object-cover" />
+                          </div>
+                        )}
+
+                        {getScenarioTrades(item).length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {getScenarioTrades(item).map((trade) => (
+                              <div key={trade.id} className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-semibold text-neutral-100">{trade.executionType === "trade_1" ? "Trade 1" : "Re-entry"}</span>
+                                  <span>{trade.status === "planned" || trade.status === "executed" ? trade.status : RESULT_STATUS_LABELS[trade.status] ?? trade.status}</span>
+                                </div>
+                                <div className="mt-2 grid gap-2 md:grid-cols-4">
+                                  <ArchiveField title="Вход / выход" value={`${trade.actualEntry || "—"} → ${trade.actualExit || "—"}`} />
+                                  <ArchiveField title="Риск" value={trade.actualRisk ? `$${trade.actualRisk}` : "—"} />
+                                  <ArchiveField title="Результат" value={trade.actualResult ? `$${trade.actualResult}` : "—"} />
+                                  <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[trade.technical] ?? trade.technical} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                         {item.archiveComment && <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-300">{item.archiveComment}</div>}
                       </div>
@@ -609,6 +693,13 @@ export default function TradeGateApp() {
               onDelete={(id) => dispatchPlanning({ type: "delete-setup", id })}
             />
 
+            <EntryMethodPlaybookCard
+              entryMethods={entryMethods}
+              onAdd={(name, description) => dispatchPlanning({ type: "add-entry-method", name, description })}
+              onUpdate={(id, changes) => dispatchPlanning({ type: "update-entry-method", id, changes })}
+              onDelete={(id) => dispatchPlanning({ type: "delete-entry-method", id })}
+            />
+
             <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
               <CardContent className="p-5">
                 <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Правило для 100k аккаунта" />
@@ -648,6 +739,12 @@ export default function TradeGateApp() {
 
             <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
               <div className="space-y-2">
+                <div className="mb-3 grid gap-2 rounded-2xl border border-white/[0.08] bg-black/20 p-3 text-sm md:grid-cols-4">
+                  <Rule title="В архив" value={String(closeDaySummary.scenarioCount)} />
+                  <Rule title="Закрытых" value={String(closeDaySummary.closedCount)} />
+                  <Rule title="PnL дня" value={`$${closeDaySummary.totalPnl.toFixed(0)}`} />
+                  <Rule title="Без входа" value={String(closeDaySummary.noEntryCount)} />
+                </div>
                 {activePlansForDate.map((item) => {
                   const checked = closeCarryIds.includes(item.id);
                   return (
@@ -667,9 +764,9 @@ export default function TradeGateApp() {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-neutral-100">
-                          {item.symbol} · {item.setupName || "Сетап не выбран"}
+                          {item.symbol} · {getPlanSetupLabel(item)}
                         </span>
-                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || item.trigger || "Зона входа не заполнена"}</span>
+                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || getPlanEntryMethod(item) || "Зона входа не заполнена"}</span>
                         {item.carryCount >= 5 && <span className="mt-2 block text-xs text-amber-100">Сценарий переносился несколько дней и может быть уже неактуален.</span>}
                       </span>
                     </label>
@@ -699,7 +796,8 @@ export default function TradeGateApp() {
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
               <div className="text-sm text-neutral-500">
-                К переносу выбрано: <span className="font-semibold text-neutral-200">{closeCarryIds.length}</span>
+                К переносу выбрано: <span className="font-semibold text-neutral-200">{closeCarryIds.length}</span> · Фактических исполнений:{" "}
+                <span className="font-semibold text-neutral-200">{closeDaySummary.executedTradeCount}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => setCloseCarryIds([])} variant="outline" className="rounded-xl border border-white/10 bg-black/30 text-neutral-200 hover:bg-white/10">

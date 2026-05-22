@@ -2,13 +2,14 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey } from "./utils";
-import type { CarryScenarioMode, EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
+import type { CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, Setup, TradeExecutionType } from "./types";
 
 export function InstrumentPlan({
   idea,
   activePlanDate,
   plans,
   setups,
+  entryMethods,
   instrumentImages,
   marketIdeaNotes,
   onAddScenario,
@@ -16,7 +17,11 @@ export function InstrumentPlan({
   onImageChange,
   onDeleteImage,
   onUpdatePlan,
-  onArchivePlan,
+  onAddTrade,
+  onUpdateTrade,
+  onRemoveTrade,
+  onClosePlan,
+  onReopenPlan,
   onCarryPlan,
   onRemovePlan,
 }: {
@@ -24,6 +29,7 @@ export function InstrumentPlan({
   activePlanDate: string;
   plans: SessionPlan[];
   setups: Setup[];
+  entryMethods: EntryMethod[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   onAddScenario: (symbol: string) => void;
@@ -31,7 +37,11 @@ export function InstrumentPlan({
   onImageChange: (symbol: string, file: File | undefined) => void;
   onDeleteImage: (symbol: string) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
-  onArchivePlan: (id: number) => void;
+  onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
+  onUpdateTrade: <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => void;
+  onRemoveTrade: (scenarioId: number, tradeId: string) => void;
+  onClosePlan: (id: number) => void;
+  onReopenPlan: (id: number) => void;
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
 }) {
@@ -129,8 +139,13 @@ export function InstrumentPlan({
               item={item}
               index={index}
               setups={setups}
+              entryMethods={entryMethods}
               onUpdate={onUpdatePlan}
-              onArchive={onArchivePlan}
+              onAddTrade={onAddTrade}
+              onUpdateTrade={onUpdateTrade}
+              onRemoveTrade={onRemoveTrade}
+              onClose={onClosePlan}
+              onReopen={onReopenPlan}
               onCarry={onCarryPlan}
               onRemove={onRemovePlan}
             />
