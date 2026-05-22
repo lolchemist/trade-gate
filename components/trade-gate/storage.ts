@@ -246,6 +246,7 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
+    tradingDayStatuses: normalizeTradingDayStatuses(state.tradingDayStatuses, defaultState?.tradingDayStatuses, activePlanDate),
     riskControlsByDate,
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
     emergencyNotes,
@@ -254,6 +255,16 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     syncKey: state.syncKey ?? defaultState?.syncKey ?? DEFAULT_SYNC_KEY,
     lastUpdatedAt: state.lastUpdatedAt ?? defaultState?.lastUpdatedAt ?? "",
   };
+}
+
+function normalizeTradingDayStatuses(
+  statuses: PlanningState["tradingDayStatuses"] | undefined,
+  defaultStatuses: PlanningState["tradingDayStatuses"] | undefined,
+  activePlanDate: string
+) {
+  const merged = { ...(defaultStatuses ?? {}), ...(statuses ?? {}) };
+  if (!merged[activePlanDate]) merged[activePlanDate] = "active";
+  return merged;
 }
 
 function normalizeRiskControlsByDate(
@@ -469,6 +480,7 @@ function toCloudPayload(state: PlanningState): CloudPayload {
     instrumentImages: state.instrumentImages,
     marketIdeaNotes: state.marketIdeaNotes,
     dailyRiskBudgets: state.dailyRiskBudgets,
+    tradingDayStatuses: state.tradingDayStatuses,
     riskControlsByDate: state.riskControlsByDate,
     accountSettings: state.accountSettings,
     emergencyNotes: state.emergencyNotes,

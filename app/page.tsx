@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard";
 import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
+import { ClosedDayHero } from "@/components/trade-gate/ClosedDayHero";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
 import { EntryMethodPlaybookCard } from "@/components/trade-gate/EntryMethodPlaybookCard";
@@ -53,6 +54,7 @@ import type {
   EditableTradeField,
   MarketIdeaField,
   MarketIdeaNotes,
+  PermissionToTrade,
   PersistedImages,
   RiskControlField,
   RiskControlState,
@@ -100,7 +102,7 @@ export default function TradeGateApp() {
   const [closeCarryIds, setCloseCarryIds] = useState<number[]>([]);
   const [closeCarryMode, setCloseCarryMode] = useState<CarryScenarioMode>("scenario_trade_plan");
 
-  const { setups, entryMethods, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, riskControlsByDate, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
+  const { setups, entryMethods, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, tradingDayStatuses, riskControlsByDate, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
   const activeRiskControls = getRiskControlsForDate(riskControlsByDate, activePlanDate);
   const { sleep, anxiety, urge, anger, dailyPnl, dailyLoss, tradesToday, consecutiveStops, plan, newsChecked, stopSet, revenge, lockUntil } = activeRiskControls;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
@@ -124,6 +126,8 @@ export default function TradeGateApp() {
   }, [activePlansForDate]);
   const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
+  const tradingDayStatus = tradingDayStatuses[activePlanDate] ?? "active";
+  const isTradingDayClosed = tradingDayStatus === "closed";
   const plannedRiskUsed = todayMetrics.plannedRiskUsed;
   const dailyRiskRemaining = todayMetrics.remainingRisk;
   const emergencyNote = activeRiskControls.emergencyNote ?? emergencyNotes[activePlanDate] ?? "";
@@ -168,8 +172,18 @@ export default function TradeGateApp() {
 
   const { weeklyReport, analyticsStats } = useWeeklyReport(archivedPlans, activePlanDate, emergencyNotes);
   const isLocked = riskResult.status === "LOCKED";
-  const permission = useMemo(
+  const permission = useMemo<PermissionToTrade>(
     () =>
+      isTradingDayClosed
+        ? {
+            permission: "denied",
+            maxAllowedRisk: 0,
+            maxAllowedLot: 0,
+            maxAdditionalTrades: 0,
+            reEntryAllowed: false,
+            instruction: "Trading finished for today",
+          }
+        :
       calculatePermission({
         status: riskResult.status,
         executionReadiness: riskResult.readiness.execution,
@@ -183,7 +197,7 @@ export default function TradeGateApp() {
         bestScenarioRisk: Number(bestValidScenario?.plan.tradeRisk) || 0,
         bestScenarioLot: bestValidScenario?.validation.math.lot ?? 0,
       }),
-    [riskResult, dailyRiskRemaining, personalDailyStopHit, todayMetrics.tradesToday, todayMetrics.consecutiveStops, bestValidScenario]
+    [isTradingDayClosed, riskResult, dailyRiskRemaining, personalDailyStopHit, todayMetrics.tradesToday, todayMetrics.consecutiveStops, bestValidScenario]
   );
 
   const shiftPlanDate = (days: number) => {
@@ -277,6 +291,13 @@ export default function TradeGateApp() {
   const reopenScenario = (id: number) => {
     dispatchPlanning({ type: "reopen-plan", id });
     setSyncStatus("Сценарий возвращён в план");
+  };
+
+  const reopenTradingDay = () => {
+    const confirmed = window.confirm("Переоткрыть торговый день? Сценарии снова станут редактируемыми, а Today вернётся в активный режим.");
+    if (!confirmed) return;
+    dispatchPlanning({ type: "set-trading-day-status", planDate: activePlanDate, status: "active" });
+    setSyncStatus(`Торговый день ${activePlanDate} переоткрыт`);
   };
 
   const carryScenario = (id: number, mode: CarryScenarioMode) => {
@@ -385,10 +406,22 @@ export default function TradeGateApp() {
 
         {activeTab === "today" && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            <HeroStatus result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
-            <LockOverlay result={riskResult} lockUntil={lockUntil} />
+            {isTradingDayClosed ? (
+              <ClosedDayHero
+                activePlanDateLabel={activePlanDateLabel}
+                metrics={todayMetrics}
+                disciplineScore={riskResult.readiness.discipline}
+                setupCount={new Set(activePlansForDate.flatMap((item) => item.setupNames)).size}
+                onReopen={reopenTradingDay}
+              />
+            ) : (
+              <>
+                <HeroStatus result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
+                <LockOverlay result={riskResult} lockUntil={lockUntil} />
+              </>
+            )}
 
-            <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked ? "opacity-80" : ""}`}>
+            <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked && !isTradingDayClosed ? "opacity-80" : ""}`}>
               <div className="space-y-5">
                 <PermissionCard permission={permission} />
                 <TodayMetricsCard metrics={todayMetrics} />
@@ -404,11 +437,13 @@ export default function TradeGateApp() {
 
               <div className="space-y-5">
                 <PropRulesCard settings={accountSettings} dailyLossUsed={propDailyLossUsed} totalLossUsed={totalLossUsed} profitProgress={profitProgress} compact />
-                <EmergencyPanel
-                  note={emergencyNote}
-                  onNoteChange={(value) => updateRiskControl("emergencyNote", value)}
-                  onEmergency={triggerEmergencyLock}
-                />
+                {!isTradingDayClosed && (
+                  <EmergencyPanel
+                    note={emergencyNote}
+                    onNoteChange={(value) => updateRiskControl("emergencyNote", value)}
+                    onEmergency={triggerEmergencyLock}
+                  />
+                )}
 
                 <details className="group rounded-[1.75rem] border border-white/[0.08] bg-white/[0.035] p-5 shadow-xl shadow-black/15 backdrop-blur-xl">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
@@ -486,6 +521,11 @@ export default function TradeGateApp() {
                 <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                   <SectionTitle icon={<ListChecks className="h-4 w-4" />} title={`Торговый план на ${activePlanDateLabel}`} />
                   <div className="flex flex-wrap items-center gap-2">
+                    {isTradingDayClosed && (
+                      <Button onClick={reopenTradingDay} variant="outline" className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]">
+                        Переоткрыть торговый день
+                      </Button>
+                    )}
                     <Button onClick={() => shiftPlanDate(-1)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -515,7 +555,14 @@ export default function TradeGateApp() {
                       entryMethods={entryMethods}
                       instrumentImages={instrumentImages as PersistedImages}
                       marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
-                      onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
+                      onAddScenario={(symbol) => {
+                        if (isTradingDayClosed) {
+                          const confirmed = window.confirm("Торговый день закрыт. Переоткрыть его, чтобы добавить сценарий?");
+                          if (!confirmed) return;
+                          dispatchPlanning({ type: "set-trading-day-status", planDate: activePlanDate, status: "active" });
+                        }
+                        dispatchPlanning({ type: "add-plan", symbol });
+                      }}
                       onUpdateIdeaText={updateMarketIdeaText}
                       onImageChange={handleInstrumentImage}
                       onDeleteImage={deleteInstrumentImage}
@@ -552,7 +599,7 @@ export default function TradeGateApp() {
                   <Rule title="Сценариев на дату" value={String(sessionPlans.filter((item) => item.planDate === activePlanDate).length)} />
                   <Rule title="Готовых сценариев" value={String(sessionPlanReadyCount)} />
                   <Rule title="Плановый риск" value={`$${plannedRiskUsed.toFixed(0)}`} />
-                  <Rule title="Остаток риска" value={`$${dailyRiskRemaining.toFixed(0)}`} />
+                  <Rule title="Статус дня" value={isTradingDayClosed ? "Завершён" : "Активен"} />
                 </div>
                 <label className="block">
                   <div className="mb-1 text-sm text-neutral-300">Ежедневный разбор</div>

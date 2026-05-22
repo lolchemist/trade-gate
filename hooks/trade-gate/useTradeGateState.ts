@@ -18,7 +18,22 @@ import {
   syncLegacyResultFields,
   validateScenarioPlan,
 } from "@/components/trade-gate/utils";
-import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, PlanningState, RiskControlField, RiskControlState, ScenarioTrade, SessionPlan, Setup, TradeExecutionType } from "@/types/trade-gate";
+import type {
+  AccountSettings,
+  ArchivedPlan,
+  CarryScenarioMode,
+  EditablePlanField,
+  EditableTradeField,
+  EntryMethod,
+  PlanningState,
+  RiskControlField,
+  RiskControlState,
+  ScenarioTrade,
+  SessionPlan,
+  Setup,
+  TradeExecutionType,
+  TradingDayStatus,
+} from "@/types/trade-gate";
 
 const initialPlanDate = getInitialPlanDate();
 
@@ -30,6 +45,7 @@ export const initialPlanningState: PlanningState = {
   instrumentImages: {},
   marketIdeaNotes: {},
   dailyRiskBudgets: {},
+  tradingDayStatuses: {},
   riskControlsByDate: {
     [initialPlanDate]: createDefaultRiskControls(),
   },
@@ -62,6 +78,7 @@ export type PlanningAction =
   | { type: "remove-instrument-image"; key: string }
   | { type: "set-market-idea-note"; key: string; value: string }
   | { type: "set-daily-risk-budget"; planDate: string; budgetUsd: string }
+  | { type: "set-trading-day-status"; planDate: string; status: TradingDayStatus }
   | { type: "set-risk-control"; planDate: string; field: RiskControlField; value: RiskControlState[RiskControlField] }
   | { type: "reset-risk-controls"; planDate: string }
   | { type: "set-account-setting"; field: keyof AccountSettings; value: string }
@@ -89,6 +106,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         instrumentImages: action.payload.instrumentImages ?? state.instrumentImages,
         marketIdeaNotes: action.payload.marketIdeaNotes ?? state.marketIdeaNotes,
         dailyRiskBudgets: action.payload.dailyRiskBudgets ?? state.dailyRiskBudgets,
+        tradingDayStatuses: action.payload.tradingDayStatuses ?? state.tradingDayStatuses,
         riskControlsByDate: action.payload.riskControlsByDate ?? state.riskControlsByDate,
         accountSettings: action.payload.accountSettings ?? state.accountSettings,
         emergencyNotes: action.payload.emergencyNotes ?? state.emergencyNotes,
@@ -211,6 +229,11 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           [action.planDate]: { planDate: action.planDate, budgetUsd: action.budgetUsd },
         },
       };
+    case "set-trading-day-status":
+      return {
+        ...state,
+        tradingDayStatuses: { ...state.tradingDayStatuses, [action.planDate]: action.status },
+      };
     case "set-risk-control": {
       const currentControls = getRiskControlsForDate(state.riskControlsByDate, action.planDate);
       const nextControls = { ...currentControls, [action.field]: action.value, updatedAt: new Date().toISOString() };
@@ -305,12 +328,17 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
 
       return {
         ...state,
-        activePlanDate: action.nextPlanDate,
+        activePlanDate: action.planDate,
+        tradingDayStatuses: {
+          ...state.tradingDayStatuses,
+          [action.planDate]: "closed",
+          [action.nextPlanDate]: state.tradingDayStatuses[action.nextPlanDate] ?? "active",
+        },
         riskControlsByDate: {
           ...state.riskControlsByDate,
-          [action.nextPlanDate]: createDefaultRiskControls({ updatedAt: new Date().toISOString() }),
+          [action.nextPlanDate]: state.riskControlsByDate[action.nextPlanDate] ?? createDefaultRiskControls({ updatedAt: new Date().toISOString() }),
         },
-        emergencyNotes: { ...state.emergencyNotes, [action.nextPlanDate]: "" },
+        emergencyNotes: { ...state.emergencyNotes, [action.nextPlanDate]: state.emergencyNotes[action.nextPlanDate] ?? "" },
         emergencyLock: { revenge: false, lockUntil: "" },
         marketIdeaNotes: plansToArchive
           .filter((plan) => carryIds.has(plan.id))

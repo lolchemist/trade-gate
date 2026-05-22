@@ -10,6 +10,24 @@ const permissionLabels: Record<PermissionToTrade["permission"], string> = {
 };
 
 export function PermissionCard({ permission }: { permission: PermissionToTrade }) {
+  if (permission.instruction === "Trading finished for today") {
+    return (
+      <TerminalPanel className="p-5" glow="emerald">
+        <PanelHeader
+          eyebrow="Финальный фильтр"
+          title="Торговля завершена"
+          meta={
+            <div className="flex items-center gap-2">
+              <BadgeCheck className="h-5 w-5 text-emerald-100" />
+              <StatusPill tone="emerald">ДЕНЬ ЗАКРЫТ</StatusPill>
+            </div>
+          }
+        />
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200">Trading finished for today</div>
+      </TerminalPanel>
+    );
+  }
+
   const tone = permission.permission === "granted" ? "emerald" : permission.permission === "reduced" ? "amber" : "red";
 
   return (

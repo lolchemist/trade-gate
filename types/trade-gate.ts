@@ -13,6 +13,8 @@ export type TechnicalStatus = "yes" | "no" | "partial";
 
 export type GateStatus = "OK" | "CAUTION" | "DANGER" | "LOCKED";
 
+export type TradingDayStatus = "active" | "closed" | "locked";
+
 export type TradeExecutionType = "trade_1" | "re_entry";
 
 export type TradeExecutionStatus = "planned" | "executed" | ResultStatus;
@@ -232,6 +234,7 @@ export interface PlanningState {
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  tradingDayStatuses: Record<string, TradingDayStatus>;
   riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
@@ -249,6 +252,7 @@ export interface CloudPayload {
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  tradingDayStatuses: Record<string, TradingDayStatus>;
   riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
