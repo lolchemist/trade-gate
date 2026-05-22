@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Archive, ArrowRight, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getPointValueLabel } from "@/constants/instrumentDefaults";
 import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { calculateScenarioTradeMath, isPlanReady } from "./utils";
@@ -122,7 +123,7 @@ export function ScenarioCard({
               <NumberInput label="Тех. стоп" value={item.tradeStop} setValue={(value) => onUpdate(item.id, "tradeStop", value)} />
               <NumberInput label="Тех. тейк" value={item.tradeTake} setValue={(value) => onUpdate(item.id, "tradeTake", value)} />
               <NumberInput label="Риск, $" value={item.tradeRisk} setValue={(value) => onUpdate(item.id, "tradeRisk", value)} />
-              <NumberInput label="$ / пункт / 1 лот" value={item.tradePointValue} setValue={(value) => onUpdate(item.id, "tradePointValue", value)} />
+              <NumberInput label={getPointValueLabel(item.symbol)} value={item.tradePointValue} setValue={(value) => onUpdate(item.id, "tradePointValue", value)} />
             </div>
 
             <ScenarioTradeMath item={item} />

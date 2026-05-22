@@ -1,7 +1,5 @@
 export type Direction = "long" | "short" | "both";
 
-export type TradeDirection = Extract<Direction, "long" | "short">;
-
 export type ResultStatus =
   | "not_taken"
   | "take"
@@ -48,7 +46,6 @@ export interface SessionPlan {
   tradeTake: string;
   tradeRisk: string;
   tradePointValue: string;
-  entryReason: string;
 }
 
 export interface ArchivedPlan extends SessionPlan {
@@ -211,17 +208,6 @@ export interface GateResult {
   revengeDetectorScore: number;
 }
 
-export interface TradeMath {
-  stopDistance: number;
-  takeDistance: number;
-  lots: number;
-  rewardDollars: number;
-  rr: number;
-  stopValid: boolean;
-  takeValid: boolean;
-  valid: boolean;
-}
-
 export interface ScenarioTradeMath {
   stopDistance: number;
   takeDistance: number;
@@ -236,19 +222,6 @@ export interface ScenarioValidation {
   reasons: string[];
   math: ScenarioTradeMath;
 }
-
-export interface TradeCalculatorState {
-  symbol: string;
-  direction: TradeDirection;
-  entryReason: string;
-  entryPrice: number | string;
-  stopPrice: number | string;
-  takePrice: number | string;
-  riskDollars: number | string;
-  dollarsPerPointPerLot: number | string;
-}
-
-export type TradeCalculatorField = keyof TradeCalculatorState;
 
 export type SelectOption<T extends string = string> = {
   value: T;

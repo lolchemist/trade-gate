@@ -1,13 +1,14 @@
 import { useReducer } from "react";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS } from "@/constants/trade-gate";
+import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { createCustomSetup, createDefaultRiskControls, createSessionPlan, getInitialPlanDate, getPreferredSetup, getRiskControlsForDate, getSetupName } from "@/components/trade-gate/utils";
-import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, PlanningState, RiskControlField, RiskControlState, SessionPlan, Setup, TradeCalculatorState } from "@/types/trade-gate";
+import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, PlanningState, RiskControlField, RiskControlState, SessionPlan, Setup } from "@/types/trade-gate";
 
 const initialPlanDate = getInitialPlanDate();
 
 export const initialPlanningState: PlanningState = {
   setups: DEFAULT_SETUPS,
-  sessionPlans: [createSessionPlan(initialPlanDate, "BCOUSD", 1, DEFAULT_SETUPS[0])],
+  sessionPlans: [createSessionPlan(initialPlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, DEFAULT_SETUPS[0])],
   archivedPlans: [],
   instrumentImages: {},
   marketIdeaNotes: {},
@@ -24,17 +25,6 @@ export const initialPlanningState: PlanningState = {
   activePlanDate: initialPlanDate,
   syncKey: "nataliia-main",
   lastUpdatedAt: "",
-};
-
-export const initialCalculatorState: TradeCalculatorState = {
-  symbol: "BCOUSD",
-  direction: "long",
-  entryReason: "",
-  entryPrice: 85,
-  stopPrice: 84.6,
-  takePrice: 86,
-  riskDollars: 500,
-  dollarsPerPointPerLot: 1000,
 };
 
 export type PlanningAction =
@@ -94,7 +84,14 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     case "update-plan":
       return {
         ...state,
-        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id ? ({ ...plan, [action.field]: action.value } as SessionPlan) : plan)),
+        sessionPlans: state.sessionPlans.map((plan) => {
+          if (plan.id !== action.id) return plan;
+          if (action.field === "symbol") {
+            const symbol = normalizeInstrumentSymbol(String(action.value));
+            return { ...plan, symbol, tradePointValue: getPointValuePerLot(symbol) };
+          }
+          return { ...plan, [action.field]: action.value } as SessionPlan;
+        }),
       };
     case "remove-plan":
       return { ...state, sessionPlans: state.sessionPlans.filter((plan) => plan.id !== action.id) };
@@ -247,21 +244,21 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           })),
           ...state.archivedPlans,
         ],
-        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, "BCOUSD", Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
+        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
       };
     }
     case "reset-trading-plan":
       return {
         ...state,
         sessionPlans: [
-          createSessionPlan(action.activePlanDate, "BCOUSD", Date.now(), getPreferredSetup(state.setups)),
+          createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredSetup(state.setups)),
           ...state.sessionPlans.filter((plan) => plan.planDate !== action.activePlanDate),
         ],
       };
     case "reset-session":
       return {
         ...state,
-        sessionPlans: [createSessionPlan(action.activePlanDate, "BCOUSD", 1, getPreferredSetup(state.setups))],
+        sessionPlans: [createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, getPreferredSetup(state.setups))],
         archivedPlans: [],
       };
     default:
@@ -307,8 +304,7 @@ function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryS
     tradeStop: withTradePlan ? plan.tradeStop : "",
     tradeTake: withTradePlan ? plan.tradeTake : "",
     tradeRisk: withTradePlan ? plan.tradeRisk : "",
-    tradePointValue: withTradePlan ? plan.tradePointValue : "",
-    entryReason: withTradePlan ? plan.entryReason : "",
+    tradePointValue: withTradePlan ? plan.tradePointValue : getPointValuePerLot(plan.symbol),
   };
 }
 

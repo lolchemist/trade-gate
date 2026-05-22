@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS, STORAGE_KEY } from "./constants";
 import { createDefaultRiskControls, createSessionPlan, getInitialPlanDate } from "./utils";
 import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, SessionPlan, Setup, StorageLoadResult, StorageSaveResult } from "./types";
@@ -238,7 +239,7 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
 
   return {
     setups,
-    sessionPlans: sessionPlans.length > 0 ? sessionPlans : [createSessionPlan(fallbackDate, "BCOUSD", 1)],
+    sessionPlans: sessionPlans.length > 0 ? sessionPlans : [createSessionPlan(fallbackDate, DEFAULT_INSTRUMENT_SYMBOL, 1)],
     archivedPlans: normalizeArchivedPlans(state.archivedPlans, fallbackDate, setups),
     instrumentImages: state.instrumentImages ?? defaultState?.instrumentImages ?? {},
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
@@ -300,7 +301,7 @@ function normalizeSetups(setups: Setup[] | undefined, defaultSetups = DEFAULT_SE
     ? setups.map((setup) => ({
         ...setup,
         description: setup.description ?? "",
-        defaultInstrument: setup.defaultInstrument ?? "",
+        defaultInstrument: setup.defaultInstrument ? normalizeInstrumentSymbol(setup.defaultInstrument) : "",
         isDefault: Boolean(setup.isDefault),
         isActive: setup.isActive ?? true,
         createdAt: setup.createdAt ?? "2026-01-01T00:00:00.000Z",
@@ -320,30 +321,33 @@ function normalizeSetups(setups: Setup[] | undefined, defaultSetups = DEFAULT_SE
 function normalizeSessionPlans(plans: SessionPlan[] | undefined, fallbackDate: string, setups: Setup[]): SessionPlan[] {
   if (!Array.isArray(plans)) return [];
 
-  return plans.map((plan, index) => ({
-    ...createSessionPlan(plan.planDate ?? fallbackDate, plan.symbol || "BCOUSD", plan.id ?? Date.now() + index),
-    ...plan,
-    carryCount: Number(plan.carryCount) || 0,
-    setupId: plan.setupId || "oil-impulse-retest",
-    setupName: plan.setupName || setups.find((setup) => setup.id === plan.setupId)?.name || DEFAULT_SETUPS.find((setup) => setup.id === plan.setupId)?.name || "Импульс по нефти + ретест",
-    planDate: plan.planDate ?? fallbackDate,
-    symbol: plan.symbol || "BCOUSD",
-  }));
+  return plans.map((plan, index) => normalizeSessionPlan(plan, fallbackDate, setups, index));
 }
 
 function normalizeArchivedPlans(plans: ArchivedPlan[] | undefined, fallbackDate: string, setups: Setup[]): ArchivedPlan[] {
   if (!Array.isArray(plans)) return [];
 
   return plans.map((plan, index) => ({
-    ...createSessionPlan(plan.planDate ?? fallbackDate, plan.symbol || "BCOUSD", plan.id ?? Date.now() + index),
+    ...normalizeSessionPlan(plan, fallbackDate, setups, index),
+    archivedAt: plan.archivedAt ?? "",
+  }));
+}
+
+function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, setups: Setup[], index: number): SessionPlan {
+  const symbol = normalizeInstrumentSymbol(plan.symbol || DEFAULT_INSTRUMENT_SYMBOL);
+  const fallbackPlan = createSessionPlan(plan.planDate ?? fallbackDate, symbol, plan.id ?? Date.now() + index);
+  const legacyPointValue = (plan.symbol === "BCOUSD" || plan.symbol === "COCOA") && (!plan.tradePointValue || plan.tradePointValue === "1000");
+
+  return {
+    ...fallbackPlan,
     ...plan,
     carryCount: Number(plan.carryCount) || 0,
     setupId: plan.setupId || "oil-impulse-retest",
     setupName: plan.setupName || setups.find((setup) => setup.id === plan.setupId)?.name || DEFAULT_SETUPS.find((setup) => setup.id === plan.setupId)?.name || "Импульс по нефти + ретест",
-    archivedAt: plan.archivedAt ?? "",
     planDate: plan.planDate ?? fallbackDate,
-    symbol: plan.symbol || "BCOUSD",
-  }));
+    symbol,
+    tradePointValue: legacyPointValue ? getPointValuePerLot(symbol) : plan.tradePointValue || getPointValuePerLot(symbol),
+  };
 }
 
 function toCloudPayload(state: PlanningState): CloudPayload {

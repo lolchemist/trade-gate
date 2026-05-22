@@ -7,9 +7,9 @@ import { MetricTile, ProgressMeter, StatusPill, TerminalPanel } from "./terminal
 import type { CarryScenarioMode, EditablePlanField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, SessionPlan, Setup } from "./types";
 
 const instrumentAccents: Record<string, { title: string; tone: "emerald" | "amber" | "cyan"; gradient: string }> = {
-  BCOUSD: { title: "Энергия", tone: "emerald", gradient: "from-emerald-200/[0.09] via-transparent to-sky-100/[0.05]" },
+  "UKOIL.cash": { title: "Энергия", tone: "emerald", gradient: "from-emerald-200/[0.09] via-transparent to-sky-100/[0.05]" },
   XAUUSD: { title: "Металлы", tone: "amber", gradient: "from-amber-100/[0.09] via-transparent to-stone-100/[0.045]" },
-  COCOA: { title: "Сырьё", tone: "cyan", gradient: "from-sky-100/[0.07] via-transparent to-emerald-100/[0.045]" },
+  "COCOA.c": { title: "Сырьё", tone: "cyan", gradient: "from-sky-100/[0.07] via-transparent to-emerald-100/[0.045]" },
 };
 
 export function InstrumentCard({
@@ -41,7 +41,7 @@ export function InstrumentCard({
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
 }) {
-  const accent = instrumentAccents[idea.symbol] ?? instrumentAccents.BCOUSD;
+  const accent = instrumentAccents[idea.symbol] ?? instrumentAccents["UKOIL.cash"];
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
   const image = instrumentImages[imageKey];
   const readyCount = plans.filter(isPlanReady).length;

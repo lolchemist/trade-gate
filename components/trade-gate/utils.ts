@@ -1,5 +1,6 @@
 import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_SETUPS } from "./constants";
-import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, RiskControlState, ScenarioValidation, SessionPlan, Setup, TradeDirection, TradeMath, WeeklyReport, WeeklySetupReport } from "./types";
+import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
+import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, RiskControlState, ScenarioValidation, SessionPlan, Setup, WeeklyReport, WeeklySetupReport } from "./types";
 
 export function getDateISO(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -35,8 +36,9 @@ export function formatPlanDate(isoDate: string) {
   return monthLabel ? `${Number(day)} ${monthLabel} ${year}` : isoDate;
 }
 
-export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date.now(), setup?: Setup): SessionPlan {
+export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_SYMBOL, id = Date.now(), setup?: Setup): SessionPlan {
   const selectedSetup = setup ?? DEFAULT_SETUPS[0];
+  const normalizedSymbol = normalizeInstrumentSymbol(symbol);
 
   return {
     id,
@@ -46,7 +48,7 @@ export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date
     carryCount: 0,
     setupId: selectedSetup?.id ?? "",
     setupName: selectedSetup?.name ?? "Сетап не выбран",
-    symbol,
+    symbol: normalizedSymbol,
     direction: "long",
     entryZone: "",
     trigger: "",
@@ -61,8 +63,7 @@ export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date
     tradeStop: "",
     tradeTake: "",
     tradeRisk: "500",
-    tradePointValue: "1000",
-    entryReason: "",
+    tradePointValue: getPointValuePerLot(normalizedSymbol),
   };
 }
 
@@ -336,48 +337,6 @@ export function formatSyncStatus(status: string) {
     .replaceAll("Sync error", labels["Sync error"]);
 }
 
-export function calculateTradeMath({
-  entryPrice,
-  stopPrice,
-  takePrice,
-  riskDollars,
-  dollarsPerPointPerLot,
-  direction,
-  entryReason,
-}: {
-  entryPrice: number | string;
-  stopPrice: number | string;
-  takePrice: number | string;
-  riskDollars: number | string;
-  dollarsPerPointPerLot: number | string;
-  direction: TradeDirection;
-  entryReason: string;
-}): TradeMath {
-  const entry = Number(entryPrice);
-  const stop = Number(stopPrice);
-  const take = Number(takePrice);
-  const risk = Number(riskDollars);
-  const pointValue = Number(dollarsPerPointPerLot);
-  const stopDistance = Math.abs(entry - stop);
-  const takeDistance = Math.abs(take - entry);
-  const lots = stopDistance > 0 && pointValue > 0 && risk > 0 ? risk / (stopDistance * pointValue) : 0;
-  const rewardDollars = lots * takeDistance * pointValue;
-  const rr = stopDistance > 0 ? takeDistance / stopDistance : 0;
-  const stopValid = direction === "long" ? stop < entry : stop > entry;
-  const takeValid = direction === "long" ? take > entry : take < entry;
-
-  return {
-    stopDistance,
-    takeDistance,
-    lots,
-    rewardDollars,
-    rr,
-    stopValid,
-    takeValid,
-    valid: stopDistance > 0 && takeDistance > 0 && risk > 0 && pointValue > 0 && stopValid && takeValid && entryReason.trim().length > 8,
-  };
-}
-
 export function calculateScenarioTradeMath(item: SessionPlan) {
   const entry = Number(item.tradeEntry);
   const stop = Number(item.tradeStop);
@@ -427,8 +386,4 @@ export function getBestValidScenario(plans: SessionPlan[]) {
 export function coerceDirection(value: string): Direction {
   if (value === "short" || value === "both") return value;
   return "long";
-}
-
-export function coerceTradeDirection(value: string): TradeDirection {
-  return value === "short" ? "short" : "long";
 }

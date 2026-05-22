@@ -17,19 +17,17 @@ import { PropRulesCard } from "@/components/trade-gate/PropRulesCard";
 import { ReadinessDashboard } from "@/components/trade-gate/ReadinessDashboard";
 import { RiskBudgetCard } from "@/components/trade-gate/RiskBudgetCard";
 import { SetupPlaybookCard } from "@/components/trade-gate/SetupPlaybookCard";
-import { TradeCalculator } from "@/components/trade-gate/TradeCalculator";
 import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
 import { MARKET_IDEAS, MAX_INSTRUMENT_IMAGE_BYTES, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "@/components/trade-gate/constants";
 import { ArchiveField, NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
 import { useLocalStoragePersistence } from "@/hooks/trade-gate/useLocalStoragePersistence";
 import { useRiskStatus } from "@/hooks/trade-gate/useRiskStatus";
-import { initialCalculatorState, initialPlanningState, planningReducer, type PlanningAction, useTradeGateState } from "@/hooks/trade-gate/useTradeGateState";
+import { initialPlanningState, planningReducer, type PlanningAction, useTradeGateState } from "@/hooks/trade-gate/useTradeGateState";
 import { useSupabaseSync } from "@/hooks/trade-gate/useSupabaseSync";
 import { useWeeklyReport } from "@/hooks/trade-gate/useWeeklyReport";
 import {
   calculatePermission,
   calculatePlannedRisk,
-  calculateTradeMath,
   formatPlanDate,
   formatSyncStatus,
   getActiveSetups,
@@ -53,8 +51,6 @@ import type {
   RiskControlField,
   RiskControlState,
   SessionPlan,
-  TradeCalculatorField,
-  TradeCalculatorState,
 } from "@/components/trade-gate/types";
 
 type AppTab = "today" | "plan" | "journal" | "analytics" | "settings";
@@ -91,7 +87,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export default function TradeGateApp() {
   const storage = useLocalStoragePersistence({ supabaseUrl, supabaseAnonKey });
   const [planning, dispatchPlanning] = useTradeGateState();
-  const [calculator, setCalculator] = useState<TradeCalculatorState>(initialCalculatorState);
   const [activeTab, setActiveTab] = useState<AppTab>("today");
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closeCarryIds, setCloseCarryIds] = useState<number[]>([]);
@@ -123,7 +118,6 @@ export default function TradeGateApp() {
     initialPlanningState,
   });
 
-  const tradeMath = useMemo(() => calculateTradeMath(calculator), [calculator]);
   const bestValidScenario = useMemo(() => getBestValidScenario(activePlansForDate), [activePlansForDate]);
 
   const sessionPlanReadyCount = useMemo(
@@ -201,10 +195,6 @@ export default function TradeGateApp() {
     reader.readAsDataURL(file);
   };
 
-  const updateCalculator = <K extends TradeCalculatorField>(field: K, value: TradeCalculatorState[K]) => {
-    setCalculator((current) => ({ ...current, [field]: value }));
-  };
-
   const updateRiskControl = <K extends RiskControlField>(field: K, value: RiskControlState[K]) => {
     dispatchPlanning({ type: "set-risk-control", planDate: activePlanDate, field, value });
   };
@@ -219,7 +209,6 @@ export default function TradeGateApp() {
   const resetTradingPlan = () => {
     const confirmed = window.confirm("Сбросить торговый план выбранной даты? Архив и контрольные вводы не изменятся.");
     if (!confirmed) return;
-    setCalculator(initialCalculatorState);
     dispatchPlanning({ type: "reset-trading-plan", activePlanDate });
     setSyncStatus(`Торговый план для ${activePlanDate} сброшен`);
   };
@@ -472,8 +461,6 @@ export default function TradeGateApp() {
                   Готовых сценариев на выбранную дату: <span className="font-semibold">{sessionPlanReadyCount}</span>. Если нет ни одного готового сценария — приложение добавляет риск и не даёт торговать “с листа”.
                 </div>
             </div>
-
-            <TradeCalculator calculator={calculator} tradeMath={tradeMath} onChange={updateCalculator} />
           </motion.div>
         )}
 

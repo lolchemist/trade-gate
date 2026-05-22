@@ -1,4 +1,5 @@
 import type { AccountSettings, MarketIdea, ResultStatus, Setup, TechnicalStatus } from "@/types/trade-gate";
+import { DEFAULT_INSTRUMENT_SYMBOL } from "./instrumentDefaults";
 
 export const STORAGE_KEY = "trade-gate-state-v1";
 
@@ -24,7 +25,7 @@ export const DEFAULT_SETUPS: Setup[] = [
     id: "oil-impulse-retest",
     name: "Импульс по нефти + ретест",
     description: "Вход после импульса и спокойного ретеста ключевого уровня.",
-    defaultInstrument: "BCOUSD",
+    defaultInstrument: DEFAULT_INSTRUMENT_SYMBOL,
     isDefault: true,
     isActive: true,
     createdAt: DEFAULT_SETUP_DATE,
@@ -94,7 +95,7 @@ export const DEFAULT_SETUPS: Setup[] = [
 
 export const MARKET_IDEAS: MarketIdea[] = [
   {
-    symbol: "BCOUSD",
+    symbol: "UKOIL.cash",
     title: "Нефть",
     bias: "Приоритет лонг выше 86 при удержании импульса",
     scenario: "Шорт только если будет агрессивный слив под локальный минимум диапазона",
@@ -106,7 +107,7 @@ export const MARKET_IDEAS: MarketIdea[] = [
     scenario: "Лучше торговать только после подтверждения объёмом",
   },
   {
-    symbol: "COCOA",
+    symbol: "COCOA.c",
     title: "Какао",
     bias: "Высокая волатильность — только минимальный риск",
     scenario: "Интересен пробой после накопления",
