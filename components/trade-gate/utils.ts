@@ -1,5 +1,5 @@
 import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_SETUPS } from "./constants";
-import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, ScenarioValidation, SessionPlan, Setup, TradeDirection, TradeMath, WeeklyReport, WeeklySetupReport } from "./types";
+import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, RiskControlState, ScenarioValidation, SessionPlan, Setup, TradeDirection, TradeMath, WeeklyReport, WeeklySetupReport } from "./types";
 
 export function getDateISO(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -64,6 +64,31 @@ export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date
     tradePointValue: "1000",
     entryReason: "",
   };
+}
+
+export function createDefaultRiskControls(overrides: Partial<RiskControlState> = {}): RiskControlState {
+  return {
+    sleep: 7,
+    anxiety: 5,
+    urge: 5,
+    anger: 2,
+    dailyPnl: 0,
+    dailyLoss: "0",
+    tradesToday: 0,
+    consecutiveStops: "0",
+    plan: false,
+    newsChecked: false,
+    stopSet: false,
+    revenge: false,
+    lockUntil: "",
+    emergencyNote: "",
+    updatedAt: "",
+    ...overrides,
+  };
+}
+
+export function getRiskControlsForDate(riskControlsByDate: Record<string, RiskControlState>, planDate: string): RiskControlState {
+  return riskControlsByDate[planDate] ?? createDefaultRiskControls();
 }
 
 export function isPlanReady(plan: SessionPlan) {

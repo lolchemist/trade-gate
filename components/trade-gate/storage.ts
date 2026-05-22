@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS, STORAGE_KEY } from "./constants";
-import { createSessionPlan, getInitialPlanDate } from "./utils";
-import type { ArchivedPlan, CloudPayload, PlanningState, SessionPlan, Setup, StorageLoadResult, StorageSaveResult } from "./types";
+import { createDefaultRiskControls, createSessionPlan, getInitialPlanDate } from "./utils";
+import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, SessionPlan, Setup, StorageLoadResult, StorageSaveResult } from "./types";
 
 type CloudStateRow = {
   data: unknown;
@@ -229,8 +229,12 @@ function writeLocalState(state: PlanningState) {
 
 function normalizePlanningState(state: Partial<PlanningState>, defaultState?: PlanningState): PlanningState {
   const fallbackDate = defaultState?.activePlanDate ?? getInitialPlanDate();
+  const activePlanDate = state.activePlanDate ?? defaultState?.activePlanDate ?? fallbackDate;
   const setups = normalizeSetups(state.setups, defaultState?.setups);
   const sessionPlans = normalizeSessionPlans(state.sessionPlans, fallbackDate, setups);
+  const emergencyNotes = state.emergencyNotes ?? defaultState?.emergencyNotes ?? {};
+  const emergencyLock = state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" };
+  const riskControlsByDate = normalizeRiskControlsByDate(state.riskControlsByDate, defaultState?.riskControlsByDate, activePlanDate, emergencyNotes, emergencyLock);
 
   return {
     setups,
@@ -239,13 +243,56 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     instrumentImages: state.instrumentImages ?? defaultState?.instrumentImages ?? {},
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
+    riskControlsByDate,
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
-    emergencyNotes: state.emergencyNotes ?? defaultState?.emergencyNotes ?? {},
-    emergencyLock: state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" },
-    activePlanDate: state.activePlanDate ?? defaultState?.activePlanDate ?? fallbackDate,
+    emergencyNotes,
+    emergencyLock,
+    activePlanDate,
     syncKey: state.syncKey ?? defaultState?.syncKey ?? DEFAULT_SYNC_KEY,
     lastUpdatedAt: state.lastUpdatedAt ?? defaultState?.lastUpdatedAt ?? "",
   };
+}
+
+function normalizeRiskControlsByDate(
+  controls: Record<string, RiskControlState> | undefined,
+  defaultControls: Record<string, RiskControlState> | undefined,
+  activePlanDate: string,
+  emergencyNotes: Record<string, string>,
+  emergencyLock: PlanningState["emergencyLock"]
+) {
+  const merged = { ...(defaultControls ?? {}), ...(controls ?? {}) };
+  const normalized = Object.fromEntries(Object.entries(merged).map(([date, value]) => [date, normalizeRiskControls(value, emergencyNotes[date])])) as Record<string, RiskControlState>;
+
+  if (!normalized[activePlanDate]) {
+    normalized[activePlanDate] = createDefaultRiskControls({
+      revenge: emergencyLock.revenge,
+      lockUntil: emergencyLock.lockUntil,
+      emergencyNote: emergencyNotes[activePlanDate] ?? "",
+    });
+  }
+
+  return normalized;
+}
+
+function normalizeRiskControls(value: Partial<RiskControlState> | undefined, fallbackEmergencyNote = ""): RiskControlState {
+  return createDefaultRiskControls({
+    ...value,
+    sleep: Number(value?.sleep ?? 7),
+    anxiety: Number(value?.anxiety ?? 5),
+    urge: Number(value?.urge ?? 5),
+    anger: Number(value?.anger ?? 2),
+    dailyPnl: value?.dailyPnl ?? 0,
+    dailyLoss: value?.dailyLoss ?? "0",
+    tradesToday: value?.tradesToday ?? 0,
+    consecutiveStops: value?.consecutiveStops ?? "0",
+    plan: Boolean(value?.plan),
+    newsChecked: Boolean(value?.newsChecked),
+    stopSet: Boolean(value?.stopSet),
+    revenge: Boolean(value?.revenge),
+    lockUntil: value?.lockUntil ?? "",
+    emergencyNote: value?.emergencyNote ?? fallbackEmergencyNote,
+    updatedAt: value?.updatedAt ?? "",
+  });
 }
 
 function normalizeSetups(setups: Setup[] | undefined, defaultSetups = DEFAULT_SETUPS): Setup[] {
@@ -307,6 +354,7 @@ function toCloudPayload(state: PlanningState): CloudPayload {
     instrumentImages: state.instrumentImages,
     marketIdeaNotes: state.marketIdeaNotes,
     dailyRiskBudgets: state.dailyRiskBudgets,
+    riskControlsByDate: state.riskControlsByDate,
     accountSettings: state.accountSettings,
     emergencyNotes: state.emergencyNotes,
     emergencyLock: state.emergencyLock,

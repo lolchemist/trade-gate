@@ -87,6 +87,26 @@ export interface AccountSettings {
   profitTarget: string;
 }
 
+export interface RiskControlState {
+  sleep: number;
+  anxiety: number;
+  urge: number;
+  anger: number;
+  dailyPnl: string | number;
+  dailyLoss: string | number;
+  tradesToday: string | number;
+  consecutiveStops: string | number;
+  plan: boolean;
+  newsChecked: boolean;
+  stopSet: boolean;
+  revenge: boolean;
+  lockUntil: string;
+  emergencyNote?: string;
+  updatedAt: string;
+}
+
+export type RiskControlField = keyof RiskControlState;
+
 export interface WeeklyReport {
   weekStart: string;
   weekEnd: string;
@@ -133,6 +153,7 @@ export interface PlanningState {
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
   emergencyLock: EmergencyLockState;
@@ -148,6 +169,7 @@ export interface CloudPayload {
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
   emergencyLock: EmergencyLockState;
