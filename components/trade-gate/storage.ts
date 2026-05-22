@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS, STORAGE_KEY } from "./constants";
-import { createDefaultRiskControls, createSessionPlan, getInitialPlanDate } from "./utils";
+import { createDefaultRiskControls, createSessionPlan, getInitialPlanDate, getInstrumentImageKey } from "./utils";
 import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, SessionPlan, Setup, StorageLoadResult, StorageSaveResult } from "./types";
 
 type CloudStateRow = {
@@ -241,7 +241,7 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     setups,
     sessionPlans: sessionPlans.length > 0 ? sessionPlans : [createSessionPlan(fallbackDate, DEFAULT_INSTRUMENT_SYMBOL, 1)],
     archivedPlans: normalizeArchivedPlans(state.archivedPlans, fallbackDate, setups),
-    instrumentImages: state.instrumentImages ?? defaultState?.instrumentImages ?? {},
+    instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
     riskControlsByDate,
@@ -316,6 +316,26 @@ function normalizeSetups(setups: Setup[] | undefined, defaultSetups = DEFAULT_SE
   }
 
   return [...byId.values()];
+}
+
+function normalizeInstrumentImages(images: PlanningState["instrumentImages"] | undefined, defaultImages?: PlanningState["instrumentImages"]) {
+  const merged = { ...(defaultImages ?? {}), ...(images ?? {}) };
+  const normalized: PlanningState["instrumentImages"] = {};
+
+  for (const [key, value] of Object.entries(merged)) {
+    const [date, symbol] = key.split(":");
+    if (!date || !symbol) {
+      normalized[key] = value;
+      continue;
+    }
+
+    const normalizedKey = getInstrumentImageKey(date, symbol);
+    if (normalizedKey === key || normalized[normalizedKey] === undefined) {
+      normalized[normalizedKey] = value;
+    }
+  }
+
+  return normalized;
 }
 
 function normalizeSessionPlans(plans: SessionPlan[] | undefined, fallbackDate: string, setups: Setup[]): SessionPlan[] {

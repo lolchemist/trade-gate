@@ -1,4 +1,4 @@
-import { Plus, RadioTower, Upload } from "lucide-react";
+import { Plus, RadioTower, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
@@ -22,6 +22,7 @@ export function InstrumentCard({
   onAddScenario,
   onUpdateIdeaText,
   onImageChange,
+  onDeleteImage,
   onUpdatePlan,
   onArchivePlan,
   onCarryPlan,
@@ -36,6 +37,7 @@ export function InstrumentCard({
   onAddScenario: (symbol: string) => void;
   onUpdateIdeaText: (symbol: string, field: MarketIdeaField, value: string) => void;
   onImageChange: (symbol: string, file: File | undefined) => void;
+  onDeleteImage: (symbol: string) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onArchivePlan: (id: number) => void;
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
@@ -90,7 +92,18 @@ export function InstrumentCard({
               <RadioTower className="h-4 w-4" />
             </div>
             {image ? (
-              <Image src={image} alt={`chart ${idea.symbol}`} width={320} height={190} unoptimized className="h-48 w-full rounded-2xl object-cover shadow-xl shadow-black/25" />
+              <div className="space-y-3">
+                <Image src={image} alt={`chart ${idea.symbol}`} width={320} height={190} unoptimized className="h-48 w-full rounded-2xl object-cover shadow-xl shadow-black/25" />
+                <Button
+                  type="button"
+                  onClick={() => onDeleteImage(idea.symbol)}
+                  variant="outline"
+                  className="w-full rounded-2xl border border-rose-200/20 bg-rose-200/[0.06] px-3 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-rose-100 hover:bg-rose-200/[0.1]"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Удалить график
+                </Button>
+              </div>
             ) : (
               <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-black/20 text-center text-xs uppercase tracking-[0.18em] text-neutral-600">
                 Скрин графика
@@ -101,7 +114,14 @@ export function InstrumentCard({
             <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300 transition hover:bg-white/10">
               <Upload className="h-4 w-4" />
               Загрузить график
-              <input type="file" accept="image/*" onChange={(event) => onImageChange(idea.symbol, event.target.files?.[0])} className="hidden" />
+              <input
+                type="file"
+                accept="image/*"
+                aria-label={`Загрузить график ${idea.symbol}`}
+                data-instrument-symbol={idea.symbol}
+                onChange={(event) => onImageChange(idea.symbol, event.target.files?.[0])}
+                className="hidden"
+              />
             </label>
           </div>
         </div>

@@ -97,7 +97,7 @@ export function isPlanReady(plan: SessionPlan) {
 }
 
 export function getInstrumentImageKey(date: string, symbol: string) {
-  return `${date}:${symbol}`;
+  return `${date}:${normalizeInstrumentSymbol(symbol)}`;
 }
 
 export function getMarketIdeaKey(date: string, symbol: string, field: "bias" | "scenario") {

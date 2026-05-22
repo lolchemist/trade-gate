@@ -1,7 +1,7 @@
 import { useReducer } from "react";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SETUPS } from "@/constants/trade-gate";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
-import { createCustomSetup, createDefaultRiskControls, createSessionPlan, getInitialPlanDate, getPreferredSetup, getRiskControlsForDate, getSetupName } from "@/components/trade-gate/utils";
+import { createCustomSetup, createDefaultRiskControls, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPreferredSetup, getRiskControlsForDate, getSetupName } from "@/components/trade-gate/utils";
 import type { AccountSettings, ArchivedPlan, CarryScenarioMode, EditablePlanField, PlanningState, RiskControlField, RiskControlState, SessionPlan, Setup } from "@/types/trade-gate";
 
 const initialPlanDate = getInitialPlanDate();
@@ -38,6 +38,7 @@ export type PlanningAction =
   | { type: "restore-plan"; id: number }
   | { type: "carry-plan"; id: number; nextPlanDate: string; mode: CarryScenarioMode }
   | { type: "set-instrument-image"; key: string; value: string }
+  | { type: "remove-instrument-image"; key: string }
   | { type: "set-market-idea-note"; key: string; value: string }
   | { type: "set-daily-risk-budget"; planDate: string; budgetUsd: string }
   | { type: "set-risk-control"; planDate: string; field: RiskControlField; value: RiskControlState[RiskControlField] }
@@ -128,6 +129,11 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
       return carryPlanToDate(state, action.id, action.nextPlanDate, action.mode);
     case "set-instrument-image":
       return { ...state, instrumentImages: { ...state.instrumentImages, [action.key]: action.value } };
+    case "remove-instrument-image": {
+      const instrumentImages = { ...state.instrumentImages };
+      delete instrumentImages[action.key];
+      return { ...state, instrumentImages };
+    }
     case "set-market-idea-note":
       return { ...state, marketIdeaNotes: { ...state.marketIdeaNotes, [action.key]: action.value } };
     case "set-daily-risk-budget":
@@ -323,8 +329,8 @@ function copyMarketIdeaNotes(notes: PlanningState["marketIdeaNotes"], fromDate: 
 }
 
 function copyInstrumentImage(images: PlanningState["instrumentImages"], fromDate: string, toDate: string, symbol: string) {
-  const fromKey = `${fromDate}:${symbol}`;
-  const toKey = `${toDate}:${symbol}`;
+  const fromKey = getInstrumentImageKey(fromDate, symbol);
+  const toKey = getInstrumentImageKey(toDate, symbol);
   if (!images[fromKey] || images[toKey]) return images;
   return { ...images, [toKey]: images[fromKey] };
 }

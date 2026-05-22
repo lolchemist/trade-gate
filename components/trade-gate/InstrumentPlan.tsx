@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
@@ -15,6 +15,7 @@ export function InstrumentPlan({
   onAddScenario,
   onUpdateIdeaText,
   onImageChange,
+  onDeleteImage,
   onUpdatePlan,
   onArchivePlan,
   onCarryPlan,
@@ -29,6 +30,7 @@ export function InstrumentPlan({
   onAddScenario: (symbol: string) => void;
   onUpdateIdeaText: (symbol: string, field: MarketIdeaField, value: string) => void;
   onImageChange: (symbol: string, file: File | undefined) => void;
+  onDeleteImage: (symbol: string) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onArchivePlan: (id: number) => void;
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
@@ -75,7 +77,13 @@ export function InstrumentPlan({
         <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
           <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Картинка / график</div>
           {image ? (
-            <Image src={image} alt={`chart ${idea.symbol}`} width={260} height={144} unoptimized className="h-36 w-full rounded-xl object-cover" />
+            <div className="space-y-3">
+              <Image src={image} alt={`chart ${idea.symbol}`} width={260} height={144} unoptimized className="h-36 w-full rounded-xl object-cover" />
+              <Button onClick={() => onDeleteImage(idea.symbol)} variant="outline" className="w-full rounded-xl border border-rose-200/20 bg-rose-200/[0.06] text-xs text-rose-100 hover:bg-rose-200/[0.1]">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Удалить график
+              </Button>
+            </div>
           ) : (
             <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/10 text-center text-xs text-neutral-600">
               Прикрепи скрин графика
@@ -86,6 +94,8 @@ export function InstrumentPlan({
           <input
             type="file"
             accept="image/*"
+            aria-label={`Загрузить график ${idea.symbol}`}
+            data-instrument-symbol={idea.symbol}
             onChange={(event) => onImageChange(idea.symbol, event.target.files?.[0])}
             className="mt-3 w-full text-xs text-neutral-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-neutral-100"
           />

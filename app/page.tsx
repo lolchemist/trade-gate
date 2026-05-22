@@ -186,13 +186,22 @@ export default function TradeGateApp() {
       return;
     }
 
+    const imageKey = getInstrumentImageKey(activePlanDate, symbol);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
-        dispatchPlanning({ type: "set-instrument-image", key: getInstrumentImageKey(activePlanDate, symbol), value: reader.result });
+        dispatchPlanning({ type: "set-instrument-image", key: imageKey, value: reader.result });
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const deleteInstrumentImage = (symbol: string) => {
+    const confirmed = window.confirm("Удалить график для этого инструмента и даты?");
+    if (!confirmed) return;
+
+    dispatchPlanning({ type: "remove-instrument-image", key: getInstrumentImageKey(activePlanDate, symbol) });
+    setSyncStatus(`График ${symbol} удалён для ${activePlanDate}`);
   };
 
   const updateRiskControl = <K extends RiskControlField>(field: K, value: RiskControlState[K]) => {
@@ -449,6 +458,7 @@ export default function TradeGateApp() {
                       onAddScenario={(symbol) => dispatchPlanning({ type: "add-plan", symbol })}
                       onUpdateIdeaText={updateMarketIdeaText}
                       onImageChange={handleInstrumentImage}
+                      onDeleteImage={deleteInstrumentImage}
                       onUpdatePlan={updateSessionPlan}
                       onArchivePlan={archiveScenario}
                       onCarryPlan={carryScenario}
