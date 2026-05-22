@@ -41,6 +41,7 @@ import {
   getPlanEntryMethod,
   getPlanSetupLabel,
   getRiskControlsForDate,
+  getExecutedScenarioTrades,
   getScenarioActualRr,
   getScenarioExecutionQuality,
   getScenarioTotalResult,
@@ -124,6 +125,16 @@ export default function TradeGateApp() {
       unfinishedCount: activePlansForDate.filter((item) => item.status !== "closed").length,
     };
   }, [activePlansForDate]);
+  const closedDayTechnicalPercent = useMemo(() => {
+    const plansForDate = [
+      ...activePlansForDate,
+      ...archivedPlans.filter((item) => item.planDate === activePlanDate),
+    ];
+    const executedTrades = plansForDate.flatMap(getExecutedScenarioTrades);
+    if (executedTrades.length === 0) return 100;
+    const technicalTrades = executedTrades.filter((trade) => trade.technical === "yes").length;
+    return Math.round((technicalTrades / executedTrades.length) * 100);
+  }, [activePlanDate, activePlansForDate, archivedPlans]);
   const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
   const tradingDayStatus = tradingDayStatuses[activePlanDate] ?? "active";
@@ -211,6 +222,11 @@ export default function TradeGateApp() {
   };
 
   const addScenarioTrade = (scenarioId: number, executionType: TradeExecutionType) => {
+    if (isTradingDayClosed) {
+      const confirmed = window.confirm("Торговый день закрыт. Переоткрыть его, чтобы добавить исполнение?");
+      if (!confirmed) return;
+      dispatchPlanning({ type: "set-trading-day-status", planDate: activePlanDate, status: "active" });
+    }
     dispatchPlanning({ type: "add-trade", scenarioId, executionType });
   };
 
@@ -411,6 +427,7 @@ export default function TradeGateApp() {
                 activePlanDateLabel={activePlanDateLabel}
                 metrics={todayMetrics}
                 disciplineScore={riskResult.readiness.discipline}
+                technicalPercent={closedDayTechnicalPercent}
                 setupCount={new Set(activePlansForDate.flatMap((item) => item.setupNames)).size}
                 onReopen={reopenTradingDay}
               />
@@ -425,7 +442,7 @@ export default function TradeGateApp() {
               <div className="space-y-5">
                 <PermissionCard permission={permission} />
                 <TodayMetricsCard metrics={todayMetrics} />
-                <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />
+                {!isTradingDayClosed && <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />}
                 <RiskBudgetCard
                   budgetUsd={activeDailyRiskBudget.budgetUsd}
                   plannedRiskUsed={plannedRiskUsed}
@@ -451,7 +468,7 @@ export default function TradeGateApp() {
                     <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:hidden">Открыть</span>
                     <span className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:inline">Скрыть</span>
                   </summary>
-                  <div className={`mt-5 grid gap-5 ${isLocked ? "blur-[0.5px]" : ""}`}>
+                  <div className={`mt-5 grid gap-5 ${isLocked && !isTradingDayClosed ? "blur-[0.5px]" : ""}`}>
                     <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
