@@ -11,7 +11,7 @@ import { ClosedDayHero } from "@/components/trade-gate/ClosedDayHero";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
 import { EntryMethodPlaybookCard } from "@/components/trade-gate/EntryMethodPlaybookCard";
-import { HeroStatus } from "@/components/trade-gate/HeroStatus";
+import { ActiveTradingHero, LockedHero } from "@/components/trade-gate/HeroStatus";
 import { InstrumentCard } from "@/components/trade-gate/InstrumentCard";
 import { LockOverlay } from "@/components/trade-gate/LockOverlay";
 import { PermissionCard } from "@/components/trade-gate/PermissionCard";
@@ -137,7 +137,9 @@ export default function TradeGateApp() {
   }, [activePlanDate, activePlansForDate, archivedPlans]);
   const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
-  const tradingDayStatus = tradingDayStatuses[activePlanDate] ?? "active";
+  const archivedPlansForDate = useMemo(() => archivedPlans.filter((item) => item.planDate === activePlanDate), [archivedPlans, activePlanDate]);
+  const inferredClosedDay = archivedPlansForDate.length > 0 && activePlansForDate.length === 0;
+  const tradingDayStatus = tradingDayStatuses[activePlanDate] ?? (inferredClosedDay ? "closed" : "active");
   const isTradingDayClosed = tradingDayStatus === "closed";
   const plannedRiskUsed = todayMetrics.plannedRiskUsed;
   const dailyRiskRemaining = todayMetrics.remainingRisk;
@@ -182,7 +184,7 @@ export default function TradeGateApp() {
   });
 
   const { weeklyReport, analyticsStats } = useWeeklyReport(archivedPlans, activePlanDate, emergencyNotes);
-  const isLocked = riskResult.status === "LOCKED";
+  const isLocked = tradingDayStatus === "locked" || riskResult.status === "LOCKED";
   const permission = useMemo<PermissionToTrade>(
     () =>
       isTradingDayClosed
@@ -196,7 +198,7 @@ export default function TradeGateApp() {
           }
         :
       calculatePermission({
-        status: riskResult.status,
+        status: isLocked ? "LOCKED" : riskResult.status,
         executionReadiness: riskResult.readiness.execution,
         emotionalReadiness: riskResult.readiness.emotional,
         disciplineReadiness: riskResult.readiness.discipline,
@@ -208,7 +210,7 @@ export default function TradeGateApp() {
         bestScenarioRisk: Number(bestValidScenario?.plan.tradeRisk) || 0,
         bestScenarioLot: bestValidScenario?.validation.math.lot ?? 0,
       }),
-    [isTradingDayClosed, riskResult, dailyRiskRemaining, personalDailyStopHit, todayMetrics.tradesToday, todayMetrics.consecutiveStops, bestValidScenario]
+    [isTradingDayClosed, isLocked, riskResult, dailyRiskRemaining, personalDailyStopHit, todayMetrics.tradesToday, todayMetrics.consecutiveStops, bestValidScenario]
   );
 
   const shiftPlanDate = (days: number) => {
@@ -433,8 +435,12 @@ export default function TradeGateApp() {
               />
             ) : (
               <>
-                <HeroStatus result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
-                <LockOverlay result={riskResult} lockUntil={lockUntil} />
+                {isLocked ? (
+                  <LockedHero result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
+                ) : (
+                  <ActiveTradingHero result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
+                )}
+                <LockOverlay result={isLocked ? { ...riskResult, status: "LOCKED" } : riskResult} lockUntil={lockUntil} />
               </>
             )}
 

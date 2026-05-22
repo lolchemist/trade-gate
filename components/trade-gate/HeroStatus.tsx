@@ -26,17 +26,34 @@ const toneClasses: Record<HeroTone, { shell: string; glow: string; text: string;
   },
 };
 
-export function HeroStatus({
-  result,
-  permission,
-  activePlanDateLabel,
-}: {
+type BaseHeroProps = {
   result: GateResult;
   permission: PermissionToTrade;
   activePlanDateLabel: string;
+};
+
+export function ActiveTradingHero(props: BaseHeroProps) {
+  return <TradingHeroBase {...props} forceLocked={false} />;
+}
+
+export function LockedHero(props: BaseHeroProps) {
+  return <TradingHeroBase {...props} forceLocked />;
+}
+
+export function HeroStatus(props: BaseHeroProps) {
+  return <TradingHeroBase {...props} forceLocked={props.result.status === "LOCKED"} />;
+}
+
+function TradingHeroBase({
+  result,
+  permission,
+  activePlanDateLabel,
+  forceLocked,
+}: BaseHeroProps & {
+  forceLocked: boolean;
 }) {
-  const denied = permission.permission === "denied" || result.status === "LOCKED";
-  const reduced = permission.permission === "reduced" || result.status === "CAUTION" || result.status === "DANGER";
+  const denied = forceLocked;
+  const reduced = !denied && (permission.permission === "reduced" || result.status === "CAUTION" || result.status === "DANGER");
   const tone: HeroTone = denied ? "red" : reduced ? "amber" : "emerald";
   const label = denied ? "БЛОКИРОВКА" : reduced ? "СНИЖЕННЫЙ РИСК" : "ТОРГОВЛЯ РАЗРЕШЕНА";
   const permissionLabel = permission.permission === "granted" ? "РАЗРЕШЁН" : permission.permission === "reduced" ? "СНИЖЕН" : "ЗАПРЕЩЁН";
