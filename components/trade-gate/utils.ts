@@ -1,5 +1,5 @@
 import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_SETUPS } from "./constants";
-import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, SessionPlan, Setup, TradeDirection, TradeMath, WeeklyReport, WeeklySetupReport } from "./types";
+import type { ArchivedPlan, DailyRiskBudget, Direction, PermissionToTrade, ScenarioValidation, SessionPlan, Setup, TradeDirection, TradeMath, WeeklyReport, WeeklySetupReport } from "./types";
 
 export function getDateISO(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -67,7 +67,7 @@ export function createSessionPlan(planDate: string, symbol = "BCOUSD", id = Date
 }
 
 export function isPlanReady(plan: SessionPlan) {
-  return Boolean(plan.symbol && plan.direction && plan.entryZone && plan.trigger && plan.stop && plan.take);
+  return validateScenarioPlan(plan).valid;
 }
 
 export function getInstrumentImageKey(date: string, symbol: string) {
@@ -204,6 +204,8 @@ export function calculatePermission({
   personalDailyStopHit,
   tradesToday,
   consecutiveStops,
+  bestScenarioRisk,
+  bestScenarioLot,
 }: {
   status: "OK" | "CAUTION" | "DANGER" | "LOCKED";
   executionReadiness: number;
@@ -214,11 +216,18 @@ export function calculatePermission({
   personalDailyStopHit: boolean;
   tradesToday: number;
   consecutiveStops: number;
+  bestScenarioRisk: number;
+  bestScenarioLot: number;
 }): PermissionToTrade {
+  const scenarioRisk = Math.max(0, bestScenarioRisk);
+  const scenarioLot = Math.max(0, bestScenarioLot);
+  const scaleLot = (allowedRisk: number) => (scenarioRisk > 0 && scenarioLot > 0 ? scenarioLot * (allowedRisk / scenarioRisk) : 0);
+
   if (status === "LOCKED" || personalDailyStopHit || dailyRiskRemaining <= 0 || revengeDetectorScore >= 60 || consecutiveStops >= 3) {
     return {
       permission: "denied",
       maxAllowedRisk: 0,
+      maxAllowedLot: 0,
       maxAdditionalTrades: 0,
       reEntryAllowed: false,
       instruction: "Торговля запрещена. Закрой терминал и сделай разбор.",
@@ -229,18 +238,22 @@ export function calculatePermission({
   const maxAdditionalTrades = Math.max(0, 3 - tradesToday);
 
   if (status === "DANGER" || status === "CAUTION" || readinessFloor < 70 || revengeDetectorScore >= 35 || consecutiveStops >= 2 || tradesToday >= 2) {
+    const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 250));
     return {
       permission: "reduced",
-      maxAllowedRisk: Math.max(0, Math.min(dailyRiskRemaining, 250)),
+      maxAllowedRisk,
+      maxAllowedLot: scaleLot(maxAllowedRisk),
       maxAdditionalTrades: Math.min(maxAdditionalTrades, 1),
       reEntryAllowed: false,
       instruction: "Только одна попытка минимальным риском. После стопа повторный вход запрещён.",
     };
   }
 
+  const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 500));
   return {
     permission: "granted",
-    maxAllowedRisk: Math.max(0, Math.min(dailyRiskRemaining, 500)),
+    maxAllowedRisk,
+    maxAllowedLot: scaleLot(maxAllowedRisk),
     maxAdditionalTrades,
     reEntryAllowed: true,
     instruction: "Торговать можно только по готовому сценарию с заранее заданным стопом.",
@@ -354,6 +367,36 @@ export function calculateScenarioTradeMath(item: SessionPlan) {
   const hasData = Boolean(item.tradeEntry && item.tradeStop && item.tradeTake && item.tradeRisk && item.tradePointValue);
 
   return { stopDistance, takeDistance, lot, potential, rr, hasData };
+}
+
+export function validateScenarioPlan(item: SessionPlan): ScenarioValidation {
+  const reasons: string[] = [];
+  const math = calculateScenarioTradeMath(item);
+
+  if (!item.symbol) reasons.push("не выбран инструмент");
+  if (!item.direction) reasons.push("не выбрано направление");
+  if (!item.setupId) reasons.push("не выбран сетап");
+  if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнена точка входа");
+  if (!item.trigger) reasons.push("не заполнен триггер");
+  if (!item.stop || !item.tradeStop) reasons.push("не заполнен технический стоп");
+  if (!item.take || !item.tradeTake) reasons.push("не заполнен технический тейк");
+  if ((Number(item.tradeRisk) || 0) <= 0) reasons.push("риск на сделку не задан");
+  if ((Number(item.tradePointValue) || 0) <= 0) reasons.push("стоимость пункта не задана");
+  if (math.lot <= 0 && math.hasData) reasons.push("лотность не рассчитана");
+  if (math.rr <= 0 && math.hasData) reasons.push("RR не рассчитан");
+
+  return {
+    valid: reasons.length === 0 && math.lot > 0 && math.rr > 0,
+    reasons: [...new Set(reasons)],
+    math,
+  };
+}
+
+export function getBestValidScenario(plans: SessionPlan[]) {
+  return plans
+    .map((plan) => ({ plan, validation: validateScenarioPlan(plan) }))
+    .filter((item) => item.validation.valid)
+    .sort((a, b) => b.validation.math.rr - a.validation.math.rr || Number(b.plan.tradeRisk) - Number(a.plan.tradeRisk))[0];
 }
 
 export function coerceDirection(value: string): Direction {

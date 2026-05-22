@@ -24,8 +24,9 @@ export function PermissionCard({ permission }: { permission: PermissionToTrade }
           </div>
         }
       />
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-4">
         <MetricTile label="Макс. риск" value={formatCurrency(permission.maxAllowedRisk)} tone={tone} />
+        <MetricTile label="Макс. лот" value={permission.maxAllowedLot > 0 ? permission.maxAllowedLot.toFixed(2) : "0.00"} tone={tone} />
         <MetricTile label="Ещё сделок" value={String(permission.maxAdditionalTrades)} />
         <MetricTile label="Повторный вход" value={permission.reEntryAllowed ? "Да" : "Нет"} tone={permission.reEntryAllowed ? "emerald" : "red"} />
       </div>

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { LOSS_LIMIT } from "@/constants/trade-gate";
-import type { GateResult, ReadinessScores, TradeCalculatorState, TradeMath } from "@/types/trade-gate";
+import { getBestValidScenario, validateScenarioPlan } from "@/components/trade-gate/utils";
+import type { GateResult, ReadinessScores, SessionPlan } from "@/types/trade-gate";
 
 type UseRiskStatusInput = {
   sleep: number;
@@ -16,10 +17,7 @@ type UseRiskStatusInput = {
   newsChecked: boolean;
   stopSet: boolean;
   revenge: boolean;
-  tradeMath: TradeMath;
-  calculator: TradeCalculatorState;
-  sessionPlanReadyCount: number;
-  activePlanDateLabel: string;
+  sessionPlansForDate: SessionPlan[];
   personalDailyStopHit: boolean;
   dailyRiskRemaining: number;
   propDailyLossClose: boolean;
@@ -40,10 +38,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
     newsChecked,
     stopSet,
     revenge,
-    tradeMath,
-    calculator,
-    sessionPlanReadyCount,
-    activePlanDateLabel,
+    sessionPlansForDate,
     personalDailyStopHit,
     dailyRiskRemaining,
     propDailyLossClose,
@@ -65,10 +60,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
         newsChecked,
         stopSet,
         revenge,
-        tradeMath,
-        calculator,
-        sessionPlanReadyCount,
-        activePlanDateLabel,
+        sessionPlansForDate,
         personalDailyStopHit,
         dailyRiskRemaining,
         propDailyLossClose,
@@ -87,10 +79,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
       newsChecked,
       stopSet,
       revenge,
-      tradeMath,
-      calculator,
-      sessionPlanReadyCount,
-      activePlanDateLabel,
+      sessionPlansForDate,
       personalDailyStopHit,
       dailyRiskRemaining,
       propDailyLossClose,
@@ -112,10 +101,7 @@ function calculateRiskStatus({
   newsChecked,
   stopSet,
   revenge,
-  tradeMath,
-  calculator,
-  sessionPlanReadyCount,
-  activePlanDateLabel,
+  sessionPlansForDate,
   personalDailyStopHit,
   dailyRiskRemaining,
   propDailyLossClose,
@@ -135,6 +121,9 @@ function calculateRiskStatus({
   const dailyLossNumber = Number(dailyLoss);
   const stopsNumber = Number(consecutiveStops);
   const tradesTodayNumber = Number(tradesToday);
+  const scenarioValidations = sessionPlansForDate.map(validateScenarioPlan);
+  const validScenarioCount = scenarioValidations.filter((item) => item.valid).length;
+  const bestValidScenario = getBestValidScenario(sessionPlansForDate);
 
   if (isLocked) {
     riskScore += 100;
@@ -234,28 +223,22 @@ function calculateRiskStatus({
     reasons.push("включено ‘Есть желание отбиться’ — жёсткая блокировка");
   }
 
-  if (!tradeMath.valid) {
+  if (validScenarioCount === 0) {
     riskScore += 5;
-    readiness.execution -= 20;
-    if (!calculator.entryReason || calculator.entryReason.trim().length <= 8) reasons.push("в плане конкретной сделки нет нормальной причины входа");
-    if (!tradeMath.stopValid) reasons.push("стоп в плане конкретной сделки стоит с неправильной стороны");
-    if (!tradeMath.takeValid) reasons.push("тейк в плане конкретной сделки стоит с неправильной стороны");
-    if (tradeMath.stopDistance <= 0) reasons.push("не заполнена дистанция до стопа в плане конкретной сделки");
-    if (tradeMath.takeDistance <= 0) reasons.push("не заполнена дистанция до тейка в плане конкретной сделки");
-    if ((Number(calculator.riskDollars) || 0) <= 0) reasons.push("риск в калькуляторе сделки должен быть больше нуля");
-    if ((Number(calculator.dollarsPerPointPerLot) || 0) <= 0) reasons.push("стоимость пункта в калькуляторе должна быть больше нуля");
-  }
-
-  if (sessionPlanReadyCount === 0) {
-    riskScore += 3;
     readiness.execution -= 25;
-    reasons.push(`нет готового сценария на дату ${activePlanDateLabel}`);
+    reasons.push("нет готового сценария на выбранную дату");
+
+    const scenarioReasons = scenarioValidations.flatMap((item) => item.reasons);
+    for (const reason of [...new Set(scenarioReasons)]) {
+      reasons.push(reason);
+    }
   }
 
-  if (tradeMath.rr > 0 && tradeMath.rr < 1.5) {
+  const bestScenarioRr = bestValidScenario?.validation.math.rr ?? 0;
+  if (bestScenarioRr > 0 && bestScenarioRr < 1.5) {
     riskScore += 2;
     readiness.execution -= 10;
-    warnings.push("R:R ниже 1:1.5 — сделка может быть невыгодной по математике");
+    warnings.push("Лучший готовый сценарий имеет R:R ниже 1:1.5 — сделка может быть невыгодной по математике");
   }
 
   const revengeDetectorScore = Math.min(
@@ -280,7 +263,7 @@ function calculateRiskStatus({
   readiness.emotional = Math.max(0, Math.min(100, Math.round(readiness.emotional)));
   readiness.discipline = Math.max(0, Math.min(100, Math.round(readiness.discipline)));
 
-  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || dailyRiskRemaining < 0 || revenge || !stopSet || !tradeMath.valid || stopsNumber >= 3;
+  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || dailyRiskRemaining < 0 || revenge || !stopSet || validScenarioCount === 0 || stopsNumber >= 3;
 
   if (hardLock) {
     return {

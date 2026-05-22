@@ -115,6 +115,7 @@ export interface WeeklySetupReport {
 export interface PermissionToTrade {
   permission: "granted" | "reduced" | "denied";
   maxAllowedRisk: number;
+  maxAllowedLot: number;
   maxAdditionalTrades: number;
   reEntryAllowed: boolean;
   instruction: string;
@@ -197,6 +198,21 @@ export interface TradeMath {
   stopValid: boolean;
   takeValid: boolean;
   valid: boolean;
+}
+
+export interface ScenarioTradeMath {
+  stopDistance: number;
+  takeDistance: number;
+  lot: number;
+  potential: number;
+  rr: number;
+  hasData: boolean;
+}
+
+export interface ScenarioValidation {
+  valid: boolean;
+  reasons: string[];
+  math: ScenarioTradeMath;
 }
 
 export interface TradeCalculatorState {

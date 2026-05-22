@@ -35,6 +35,7 @@ import {
   getActiveSetups,
   getDailyRiskBudget,
   getDateISO,
+  getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
   getNextDateISO,
@@ -131,10 +132,11 @@ export default function TradeGateApp() {
   });
 
   const tradeMath = useMemo(() => calculateTradeMath(calculator), [calculator]);
+  const bestValidScenario = useMemo(() => getBestValidScenario(activePlansForDate), [activePlansForDate]);
 
   const sessionPlanReadyCount = useMemo(
-    () => sessionPlans.filter((item) => item.planDate === activePlanDate && isPlanReady(item)).length,
-    [sessionPlans, activePlanDate]
+    () => activePlansForDate.filter(isPlanReady).length,
+    [activePlansForDate]
   );
 
   const riskResult = useRiskStatus({
@@ -151,10 +153,7 @@ export default function TradeGateApp() {
     newsChecked,
     stopSet,
     revenge,
-    tradeMath,
-    calculator,
-    sessionPlanReadyCount,
-    activePlanDateLabel,
+    sessionPlansForDate: activePlansForDate,
     personalDailyStopHit,
     dailyRiskRemaining,
     propDailyLossClose,
@@ -174,8 +173,10 @@ export default function TradeGateApp() {
         personalDailyStopHit,
         tradesToday: Number(tradesToday) || 0,
         consecutiveStops: Number(consecutiveStops) || 0,
+        bestScenarioRisk: Number(bestValidScenario?.plan.tradeRisk) || 0,
+        bestScenarioLot: bestValidScenario?.validation.math.lot ?? 0,
       }),
-    [riskResult, dailyRiskRemaining, personalDailyStopHit, tradesToday, consecutiveStops]
+    [riskResult, dailyRiskRemaining, personalDailyStopHit, tradesToday, consecutiveStops, bestValidScenario]
   );
 
   const shiftPlanDate = (days: number) => {
