@@ -45,6 +45,7 @@ export const initialPlanningState: PlanningState = {
   instrumentImages: {},
   marketIdeaNotes: {},
   dailyRiskBudgets: {},
+  tradingDayStatusByDate: {},
   tradingDayStatuses: {},
   riskControlsByDate: {
     [initialPlanDate]: createDefaultRiskControls(),
@@ -106,6 +107,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         instrumentImages: action.payload.instrumentImages ?? state.instrumentImages,
         marketIdeaNotes: action.payload.marketIdeaNotes ?? state.marketIdeaNotes,
         dailyRiskBudgets: action.payload.dailyRiskBudgets ?? state.dailyRiskBudgets,
+        tradingDayStatusByDate: action.payload.tradingDayStatusByDate ?? action.payload.tradingDayStatuses ?? state.tradingDayStatusByDate,
         tradingDayStatuses: action.payload.tradingDayStatuses ?? state.tradingDayStatuses,
         riskControlsByDate: action.payload.riskControlsByDate ?? state.riskControlsByDate,
         accountSettings: action.payload.accountSettings ?? state.accountSettings,
@@ -232,6 +234,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     case "set-trading-day-status":
       return {
         ...state,
+        tradingDayStatusByDate: { ...state.tradingDayStatusByDate, [action.planDate]: action.status },
         tradingDayStatuses: { ...state.tradingDayStatuses, [action.planDate]: action.status },
       };
     case "set-risk-control": {
@@ -333,6 +336,11 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           ...state.tradingDayStatuses,
           [action.planDate]: "closed",
           [action.nextPlanDate]: state.tradingDayStatuses[action.nextPlanDate] ?? "active",
+        },
+        tradingDayStatusByDate: {
+          ...state.tradingDayStatusByDate,
+          [action.planDate]: "closed",
+          [action.nextPlanDate]: state.tradingDayStatusByDate[action.nextPlanDate] ?? "active",
         },
         riskControlsByDate: {
           ...state.riskControlsByDate,

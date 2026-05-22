@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { Activity, AlertTriangle, CheckCircle2, Lock } from "lucide-react";
+import { ClosedDayHero } from "./ClosedDayHero";
 import { formatCurrency } from "./utils";
-import type { GateResult, PermissionToTrade } from "./types";
+import type { GateResult, PermissionToTrade, TodayMetrics, TradingDayStatus } from "./types";
 
 type HeroTone = "emerald" | "amber" | "red";
 
@@ -30,6 +31,15 @@ type BaseHeroProps = {
   result: GateResult;
   permission: PermissionToTrade;
   activePlanDateLabel: string;
+  activePlanDate: string;
+  tradingDayStatusByDate: Record<string, TradingDayStatus>;
+  closedDay?: {
+    metrics: TodayMetrics;
+    disciplineScore: number;
+    technicalPercent: number;
+    setupCount: number;
+    onReopen: () => void;
+  };
 };
 
 export function ActiveTradingHero(props: BaseHeroProps) {
@@ -48,10 +58,29 @@ function TradingHeroBase({
   result,
   permission,
   activePlanDateLabel,
+  activePlanDate,
+  tradingDayStatusByDate,
+  closedDay,
   forceLocked,
 }: BaseHeroProps & {
   forceLocked: boolean;
 }) {
+  const currentDayStatus = tradingDayStatusByDate[activePlanDate] ?? "active";
+
+  if (currentDayStatus === "closed" && closedDay) {
+    return (
+      <ClosedDayHero
+        activePlanDateLabel={activePlanDateLabel}
+        metrics={closedDay.metrics}
+        disciplineScore={closedDay.disciplineScore}
+        technicalPercent={closedDay.technicalPercent}
+        setupCount={closedDay.setupCount}
+        currentDayStatus={currentDayStatus}
+        onReopen={closedDay.onReopen}
+      />
+    );
+  }
+
   const denied = forceLocked;
   const reduced = !denied && (permission.permission === "reduced" || result.status === "CAUTION" || result.status === "DANGER");
   const tone: HeroTone = denied ? "red" : reduced ? "amber" : "emerald";

@@ -234,6 +234,8 @@ export interface PlanningState {
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  tradingDayStatusByDate: Record<string, TradingDayStatus>;
+  /** Legacy alias kept for existing saved state compatibility. */
   tradingDayStatuses: Record<string, TradingDayStatus>;
   riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
@@ -252,6 +254,8 @@ export interface CloudPayload {
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   dailyRiskBudgets: Record<string, DailyRiskBudget>;
+  tradingDayStatusByDate: Record<string, TradingDayStatus>;
+  /** Legacy alias kept for existing saved state compatibility. */
   tradingDayStatuses: Record<string, TradingDayStatus>;
   riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;

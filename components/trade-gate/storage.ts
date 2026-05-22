@@ -246,7 +246,16 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
-    tradingDayStatuses: normalizeTradingDayStatuses(state.tradingDayStatuses, defaultState?.tradingDayStatuses, activePlanDate),
+    tradingDayStatusByDate: normalizeTradingDayStatuses(
+      { ...(state.tradingDayStatuses ?? {}), ...(state.tradingDayStatusByDate ?? {}) },
+      { ...(defaultState?.tradingDayStatuses ?? {}), ...(defaultState?.tradingDayStatusByDate ?? {}) },
+      activePlanDate
+    ),
+    tradingDayStatuses: normalizeTradingDayStatuses(
+      { ...(state.tradingDayStatuses ?? {}), ...(state.tradingDayStatusByDate ?? {}) },
+      { ...(defaultState?.tradingDayStatuses ?? {}), ...(defaultState?.tradingDayStatusByDate ?? {}) },
+      activePlanDate
+    ),
     riskControlsByDate,
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
     emergencyNotes,
@@ -480,6 +489,7 @@ function toCloudPayload(state: PlanningState): CloudPayload {
     instrumentImages: state.instrumentImages,
     marketIdeaNotes: state.marketIdeaNotes,
     dailyRiskBudgets: state.dailyRiskBudgets,
+    tradingDayStatusByDate: state.tradingDayStatusByDate,
     tradingDayStatuses: state.tradingDayStatuses,
     riskControlsByDate: state.riskControlsByDate,
     accountSettings: state.accountSettings,

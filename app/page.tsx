@@ -7,11 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard";
 import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
-import { ClosedDayHero } from "@/components/trade-gate/ClosedDayHero";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
 import { EntryMethodPlaybookCard } from "@/components/trade-gate/EntryMethodPlaybookCard";
-import { ActiveTradingHero, LockedHero } from "@/components/trade-gate/HeroStatus";
+import { HeroStatus } from "@/components/trade-gate/HeroStatus";
 import { InstrumentCard } from "@/components/trade-gate/InstrumentCard";
 import { LockOverlay } from "@/components/trade-gate/LockOverlay";
 import { PermissionCard } from "@/components/trade-gate/PermissionCard";
@@ -103,7 +102,22 @@ export default function TradeGateApp() {
   const [closeCarryIds, setCloseCarryIds] = useState<number[]>([]);
   const [closeCarryMode, setCloseCarryMode] = useState<CarryScenarioMode>("scenario_trade_plan");
 
-  const { setups, entryMethods, sessionPlans, archivedPlans, instrumentImages, marketIdeaNotes, dailyRiskBudgets, tradingDayStatuses, riskControlsByDate, accountSettings, emergencyNotes, activePlanDate, syncKey } = planning;
+  const {
+    setups,
+    entryMethods,
+    sessionPlans,
+    archivedPlans,
+    instrumentImages,
+    marketIdeaNotes,
+    dailyRiskBudgets,
+    tradingDayStatusByDate,
+    tradingDayStatuses,
+    riskControlsByDate,
+    accountSettings,
+    emergencyNotes,
+    activePlanDate,
+    syncKey,
+  } = planning;
   const activeRiskControls = getRiskControlsForDate(riskControlsByDate, activePlanDate);
   const { sleep, anxiety, urge, anger, dailyPnl, dailyLoss, tradesToday, consecutiveStops, plan, newsChecked, stopSet, revenge, lockUntil } = activeRiskControls;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
@@ -139,7 +153,15 @@ export default function TradeGateApp() {
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
   const archivedPlansForDate = useMemo(() => archivedPlans.filter((item) => item.planDate === activePlanDate), [archivedPlans, activePlanDate]);
   const inferredClosedDay = archivedPlansForDate.length > 0 && activePlansForDate.length === 0;
-  const tradingDayStatus = tradingDayStatuses[activePlanDate] ?? (inferredClosedDay ? "closed" : "active");
+  const effectiveTradingDayStatusByDate = useMemo(
+    () => ({
+      ...tradingDayStatuses,
+      ...tradingDayStatusByDate,
+      ...(inferredClosedDay && !tradingDayStatusByDate[activePlanDate] && !tradingDayStatuses[activePlanDate] ? { [activePlanDate]: "closed" as const } : {}),
+    }),
+    [tradingDayStatusByDate, tradingDayStatuses, inferredClosedDay, activePlanDate]
+  );
+  const tradingDayStatus = effectiveTradingDayStatusByDate[activePlanDate] ?? "active";
   const isTradingDayClosed = tradingDayStatus === "closed";
   const plannedRiskUsed = todayMetrics.plannedRiskUsed;
   const dailyRiskRemaining = todayMetrics.remainingRisk;
@@ -424,25 +446,21 @@ export default function TradeGateApp() {
 
         {activeTab === "today" && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            {isTradingDayClosed ? (
-              <ClosedDayHero
-                activePlanDateLabel={activePlanDateLabel}
-                metrics={todayMetrics}
-                disciplineScore={riskResult.readiness.discipline}
-                technicalPercent={closedDayTechnicalPercent}
-                setupCount={new Set(activePlansForDate.flatMap((item) => item.setupNames)).size}
-                onReopen={reopenTradingDay}
-              />
-            ) : (
-              <>
-                {isLocked ? (
-                  <LockedHero result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
-                ) : (
-                  <ActiveTradingHero result={riskResult} permission={permission} activePlanDateLabel={activePlanDateLabel} />
-                )}
-                <LockOverlay result={isLocked ? { ...riskResult, status: "LOCKED" } : riskResult} lockUntil={lockUntil} />
-              </>
-            )}
+            <HeroStatus
+              result={isLocked ? { ...riskResult, status: "LOCKED" } : riskResult}
+              permission={permission}
+              activePlanDateLabel={activePlanDateLabel}
+              activePlanDate={activePlanDate}
+              tradingDayStatusByDate={effectiveTradingDayStatusByDate}
+              closedDay={{
+                metrics: todayMetrics,
+                disciplineScore: riskResult.readiness.discipline,
+                technicalPercent: closedDayTechnicalPercent,
+                setupCount: new Set(activePlansForDate.flatMap((item) => item.setupNames)).size,
+                onReopen: reopenTradingDay,
+              }}
+            />
+            {!isTradingDayClosed && <LockOverlay result={isLocked ? { ...riskResult, status: "LOCKED" } : riskResult} lockUntil={lockUntil} />}
 
             <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked && !isTradingDayClosed ? "opacity-80" : ""}`}>
               <div className="space-y-5">

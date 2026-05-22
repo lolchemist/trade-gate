@@ -4,19 +4,13 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "./utils";
 import type { TodayMetrics } from "./types";
 
-const closedMessages = [
-  "Сегодняшняя работа закончена. Не ищи лишние сделки.",
-  "Капитал защищён. Лучшее решение сейчас — отдых.",
-  "День закрыт. Рынок никуда не исчезнет завтра.",
-  "Самый сильный трейдер — тот, кто умеет остановиться вовремя.",
-];
-
 export function ClosedDayHero({
   activePlanDateLabel,
   metrics,
   disciplineScore,
   technicalPercent,
   setupCount,
+  currentDayStatus,
   onReopen,
 }: {
   activePlanDateLabel: string;
@@ -24,9 +18,10 @@ export function ClosedDayHero({
   disciplineScore: number;
   technicalPercent: number;
   setupCount: number;
+  currentDayStatus: string;
   onReopen: () => void;
 }) {
-  const message = closedMessages[Math.abs(hashText(metrics.planDate)) % closedMessages.length];
+  const message = "День закрыт. Рынок будет и завтра. Лучшее решение сейчас — отдых.";
   const pnlPositive = metrics.realizedPnl >= 0;
 
   return (
@@ -62,6 +57,9 @@ export function ClosedDayHero({
           <div className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-neutral-200">{message}</div>
           <div className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
             Итоги зафиксированы, архив сохранён, аналитика доступна. Следующая профессиональная задача — не добавлять лишний риск.
+          </div>
+          <div className="mt-3 inline-flex rounded-full border border-white/[0.08] bg-black/20 px-3 py-1 text-xs font-semibold text-neutral-400">
+            Current day status: {currentDayStatus}
           </div>
 
           <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
@@ -120,8 +118,4 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
 function formatSignedCurrency(value: number) {
   const formatted = formatCurrency(value);
   return value > 0 ? `+${formatted}` : formatted;
-}
-
-function hashText(value: string) {
-  return value.split("").reduce((total, char) => total + char.charCodeAt(0), 0);
 }
