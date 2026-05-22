@@ -15,6 +15,8 @@ export type GateStatus = "OK" | "CAUTION" | "DANGER" | "LOCKED";
 
 export type TradingDayStatus = "active" | "closed" | "locked";
 
+export type AppStatus = "loading" | "ready" | "syncing" | "error";
+
 export type TradeExecutionType = "trade_1" | "re_entry";
 
 export type TradeExecutionStatus = "planned" | "executed" | ResultStatus;
@@ -267,7 +269,7 @@ export interface CloudPayload {
 
 export type StorageSource = "supabase" | "localStorage" | "default";
 
-export type SyncStatus = "Saved locally" | "Syncing…" | "Synced" | "Offline / Supabase unavailable" | "Sync error";
+export type SyncStatus = "Loading local data" | "Loading cloud data" | "Saved locally" | "Syncing…" | "Synced" | "Offline / Supabase unavailable" | "Sync error";
 
 export interface StorageLoadResult {
   state: PlanningState;

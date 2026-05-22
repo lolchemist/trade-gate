@@ -572,6 +572,8 @@ export function formatSyncStatus(status: string) {
   }
 
   const labels: Record<string, string> = {
+    "Loading local data": "загружаю локальные данные",
+    "Loading cloud data": "загружаю данные Supabase",
     "Saved locally": "сохранено локально",
     "Syncing…": "синхронизация...",
     Synced: "синхронизировано",
@@ -582,6 +584,8 @@ export function formatSyncStatus(status: string) {
   if (labels[status]) return labels[status];
 
   return status
+    .replaceAll("Loading local data", labels["Loading local data"])
+    .replaceAll("Loading cloud data", labels["Loading cloud data"])
     .replaceAll("Saved locally", labels["Saved locally"])
     .replaceAll("Syncing…", labels["Syncing…"])
     .replaceAll("Synced", labels.Synced)

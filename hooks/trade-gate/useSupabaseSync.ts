@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch } from "react";
-import type { PlanningState } from "@/types/trade-gate";
+import type { AppStatus, PlanningState } from "@/types/trade-gate";
 import type { PlanningAction } from "./useTradeGateState";
 
 type TradeGateStorage = ReturnType<typeof import("@/components/trade-gate/storage").createTradeGateStorage>;
@@ -17,19 +17,23 @@ export function useSupabaseSync({
   initialPlanningState: PlanningState;
 }) {
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
   const [isInitialSyncComplete, setIsInitialSyncComplete] = useState(false);
-  const [syncStatus, setSyncStatus] = useState("");
+  const [appStatus, setAppStatus] = useState<AppStatus>("loading");
+  const [syncStatus, setSyncStatus] = useState("Loading local data");
   const skipNextAutoSaveRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     void Promise.resolve().then(async () => {
+      setAppStatus("loading");
+      setSyncStatus("Loading local data");
       const localResult = storage.loadLocal(initialPlanningState);
       if (cancelled) return;
       dispatchPlanning({ type: "hydrate", payload: localResult.state });
-      setSyncStatus(localResult.message);
       setIsHydrated(true);
+      setSyncStatus(storage.isCloudConfigured ? "Loading cloud data" : localResult.message);
 
       try {
         const result = await storage.loadLatest(localResult.state.syncKey, localResult.state, initialPlanningState);
@@ -46,7 +50,9 @@ export function useSupabaseSync({
         }
       } finally {
         if (!cancelled) {
+          setIsCloudLoaded(true);
           setIsInitialSyncComplete(true);
+          setAppStatus("ready");
         }
       }
     });
@@ -64,11 +70,13 @@ export function useSupabaseSync({
     }
 
     const timeout = window.setTimeout(() => {
+      setAppStatus("syncing");
       setSyncStatus(storage.isCloudConfigured ? "Syncing…" : "Saved locally");
       storage
         .save(planning)
         .then((result) => {
           setSyncStatus(result.status);
+          setAppStatus("ready");
           if (result.state.lastUpdatedAt !== planning.lastUpdatedAt) {
             skipNextAutoSaveRef.current = true;
             dispatchPlanning({ type: "hydrate", payload: { lastUpdatedAt: result.state.lastUpdatedAt } });
@@ -77,6 +85,7 @@ export function useSupabaseSync({
         .catch((error) => {
           console.error("Failed to auto-save Trade Gate state", error);
           setSyncStatus("Sync error");
+          setAppStatus("error");
         });
     }, 1500);
 
@@ -85,9 +94,11 @@ export function useSupabaseSync({
 
   const saveNow = async () => {
     try {
+      setAppStatus("syncing");
       setSyncStatus(storage.isCloudConfigured ? "Syncing…" : "Saved locally");
       const result = await storage.save(planning);
       setSyncStatus(result.status);
+      setAppStatus("ready");
       if (result.state.lastUpdatedAt !== planning.lastUpdatedAt) {
         skipNextAutoSaveRef.current = true;
         dispatchPlanning({ type: "hydrate", payload: { lastUpdatedAt: result.state.lastUpdatedAt } });
@@ -95,24 +106,34 @@ export function useSupabaseSync({
     } catch (error) {
       console.error("Failed to save Trade Gate state", error);
       setSyncStatus("Sync error");
+      setAppStatus("error");
     }
   };
 
   const loadFromCloud = async (syncKey: string) => {
     try {
+      setAppStatus("syncing");
       setSyncStatus(storage.isCloudConfigured ? "Syncing…" : "Offline / Supabase unavailable");
       const result = await storage.load(syncKey, initialPlanningState);
       skipNextAutoSaveRef.current = true;
       dispatchPlanning({ type: "hydrate", payload: result.state });
       setSyncStatus(result.message);
+      setIsHydrated(true);
+      setIsCloudLoaded(true);
+      setIsInitialSyncComplete(true);
+      setAppStatus("ready");
     } catch (error) {
       console.error("Failed to load Trade Gate cloud state", error);
       setSyncStatus("Sync error");
+      setAppStatus("error");
     }
   };
 
   return {
+    appStatus,
     isHydrated,
+    isCloudLoaded,
+    isInitialSyncComplete,
     syncStatus,
     setSyncStatus,
     saveNow,

@@ -10,7 +10,6 @@ export function ClosedDayHero({
   disciplineScore,
   technicalPercent,
   setupCount,
-  currentDayStatus,
   onReopen,
 }: {
   activePlanDateLabel: string;
@@ -18,7 +17,6 @@ export function ClosedDayHero({
   disciplineScore: number;
   technicalPercent: number;
   setupCount: number;
-  currentDayStatus: string;
   onReopen: () => void;
 }) {
   const message = "День закрыт. Рынок будет и завтра. Лучшее решение сейчас — отдых.";
@@ -58,10 +56,6 @@ export function ClosedDayHero({
           <div className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
             Итоги зафиксированы, архив сохранён, аналитика доступна. Следующая профессиональная задача — не добавлять лишний риск.
           </div>
-          <div className="mt-3 inline-flex rounded-full border border-white/[0.08] bg-black/20 px-3 py-1 text-xs font-semibold text-neutral-400">
-            Current day status: {currentDayStatus}
-          </div>
-
           <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
             <SummaryPill label="Сделок" value={String(metrics.tradesToday)} />
             <SummaryPill label="Сетапов" value={String(setupCount)} />
