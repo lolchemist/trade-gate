@@ -332,7 +332,8 @@ function normalizeSetups(setups: Setup[] | undefined, defaultSetups = DEFAULT_SE
     byId.set(defaultSetup.id, saved ? { ...defaultSetup, ...saved, isDefault: true } : defaultSetup);
   }
 
-  return [...byId.values()];
+  const normalized = [...byId.values()];
+  return normalized.length > 0 ? normalized : DEFAULT_SETUPS;
 }
 
 function normalizeInstrumentImages(images: PlanningState["instrumentImages"] | undefined, defaultImages?: PlanningState["instrumentImages"]) {

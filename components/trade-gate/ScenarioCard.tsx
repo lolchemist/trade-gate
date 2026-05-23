@@ -348,15 +348,21 @@ function SetupMultiSelect({
   const [query, setQuery] = useState("");
   const setupIds = Array.isArray(item.setupIds) ? item.setupIds : [];
   const selectedNames = getPlanSetupNames(item);
-  const selected = setupIds.map((setupId, index) => ({
-    id: setupId,
-    name: setups.find((setup) => setup.id === setupId)?.name ?? selectedNames[index] ?? "Сетап",
-  }));
+  const selected = setupIds.length > 0
+    ? setupIds.map((setupId, index) => ({
+        id: setupId,
+        name: setups.find((setup) => setup.id === setupId)?.name ?? selectedNames[index] ?? "Сетап",
+        removable: true,
+      }))
+    : selectedNames.map((name, index) => ({
+        id: `preserved-${item.id}-${index}`,
+        name,
+        removable: false,
+      }));
   const selectedIdSet = new Set(setupIds);
-  const filteredSetups = setups
-    .filter((setup) => setup.isActive && !selectedIdSet.has(setup.id))
-    .filter((setup) => setup.name.toLowerCase().includes(query.trim().toLowerCase()))
-    .slice(0, 6);
+  const normalizedQuery = query.trim().toLowerCase();
+  const activeSetups = setups.filter((setup) => setup.isActive === true);
+  const filteredSetups = activeSetups.filter((setup) => (normalizedQuery ? setup.name.toLowerCase().includes(normalizedQuery) : true));
   const limitReached = setupIds.length >= 5;
 
   const addSetup = (setupId: string) => {
@@ -383,9 +389,11 @@ function SetupMultiSelect({
           selected.map((setup) => (
             <span key={setup.id} className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-200/[0.07] px-3 py-1.5 text-xs text-emerald-100">
               {setup.name}
-              <button type="button" onClick={() => removeSetup(setup.id)} className="rounded-full text-emerald-100/70 transition hover:text-emerald-50" aria-label={`Убрать сетап ${setup.name}`}>
-                <X className="h-3.5 w-3.5" />
-              </button>
+              {setup.removable && (
+                <button type="button" onClick={() => removeSetup(setup.id)} className="rounded-full text-emerald-100/70 transition hover:text-emerald-50" aria-label={`Убрать сетап ${setup.name}`}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </span>
           ))
         )}
@@ -393,19 +401,35 @@ function SetupMultiSelect({
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder={limitReached ? "Можно выбрать максимум 5 сетапов" : "Найти сетап"}
-        disabled={limitReached}
-        className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30 disabled:cursor-not-allowed disabled:opacity-60"
+        placeholder="Найти сетап"
+        className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
       />
-      {!limitReached && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {filteredSetups.map((setup) => (
-            <button key={setup.id} type="button" onClick={() => addSetup(setup.id)} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-emerald-200/20 hover:bg-emerald-200/[0.07] hover:text-emerald-100">
-              {setup.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {limitReached && <div className="mt-2 text-xs text-amber-100">Можно выбрать до 5 сетапов.</div>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {filteredSetups.length === 0 ? (
+          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-500">
+            {activeSetups.length === 0 ? "В плейбуке нет активных сетапов." : "По запросу сетапы не найдены."}
+          </div>
+        ) : (
+          filteredSetups.map((setup) => {
+            const selectedAlready = selectedIdSet.has(setup.id);
+            const disabled = selectedAlready || (limitReached && !selectedAlready);
+            return (
+              <button
+                key={setup.id}
+                type="button"
+                onClick={() => addSetup(setup.id)}
+                disabled={disabled}
+                className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-emerald-200/20 hover:bg-emerald-200/[0.07] hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-white/[0.08] disabled:hover:bg-white/[0.04] disabled:hover:text-neutral-300"
+                title={selectedAlready ? "Уже выбран" : limitReached ? "Можно выбрать до 5 сетапов" : setup.name}
+              >
+                {setup.name}
+                {selectedAlready ? " · выбран" : ""}
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

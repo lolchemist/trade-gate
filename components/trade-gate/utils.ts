@@ -503,7 +503,7 @@ export function calculatePermission({
   const scenarioLot = Math.max(0, bestScenarioLot);
   const scaleLot = (allowedRisk: number) => (scenarioRisk > 0 && scenarioLot > 0 ? scenarioLot * (allowedRisk / scenarioRisk) : 0);
 
-  if (status === "LOCKED" || personalDailyStopHit || dailyRiskRemaining <= 0 || revengeDetectorScore >= 60 || consecutiveStops >= 3) {
+  if (status === "LOCKED" || personalDailyStopHit || dailyRiskRemaining <= 0 || revengeDetectorScore >= 60 || consecutiveStops >= 2) {
     return {
       permission: "denied",
       maxAllowedRisk: 0,
@@ -517,7 +517,7 @@ export function calculatePermission({
   const readinessFloor = Math.min(executionReadiness, emotionalReadiness, disciplineReadiness);
   const maxAdditionalTrades = Math.max(0, 3 - tradesToday);
 
-  if (status === "DANGER" || status === "CAUTION" || readinessFloor < 70 || revengeDetectorScore >= 35 || consecutiveStops >= 2 || tradesToday >= 2) {
+  if (status === "DANGER" || status === "CAUTION" || readinessFloor < 70 || revengeDetectorScore >= 35 || consecutiveStops >= 1 || tradesToday >= 2) {
     const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 250));
     return {
       permission: "reduced",
@@ -525,7 +525,7 @@ export function calculatePermission({
       maxAllowedLot: scaleLot(maxAllowedRisk),
       maxAdditionalTrades: Math.min(maxAdditionalTrades, 1),
       reEntryAllowed: false,
-      instruction: "Только одна попытка минимальным риском. После стопа повторный вход запрещён.",
+      instruction: consecutiveStops >= 1 ? "После одного стопа разрешена только одна попытка сниженным риском. После второго стопа торговля закрывается." : "Только одна попытка минимальным риском. После стопа повторный вход запрещён.",
     };
   }
 

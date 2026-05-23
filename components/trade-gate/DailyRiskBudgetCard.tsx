@@ -24,9 +24,9 @@ export function DailyRiskBudgetCard({
           <Rule title="Запланировано" value={formatCurrency(plannedRiskUsed)} />
           <Rule title="Остаток" value={formatCurrency(remainingRisk)} />
         </div>
-        {remainingRisk < 0 && (
+        {remainingRisk <= 0 && (
           <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-            Дневной риск-бюджет превышен. Новые сделки заблокированы.
+            Дневной риск-лимит достигнут. Новые сделки заблокированы.
           </div>
         )}
       </CardContent>

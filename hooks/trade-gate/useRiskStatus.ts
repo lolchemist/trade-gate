@@ -21,6 +21,7 @@ type UseRiskStatusInput = {
   personalDailyStopHit: boolean;
   dailyRiskRemaining: number;
   propDailyLossClose: boolean;
+  propDailyLossHit: boolean;
 };
 
 export function useRiskStatus(input: UseRiskStatusInput): GateResult {
@@ -42,6 +43,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
     personalDailyStopHit,
     dailyRiskRemaining,
     propDailyLossClose,
+    propDailyLossHit,
   } = input;
 
   return useMemo(
@@ -64,6 +66,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
         personalDailyStopHit,
         dailyRiskRemaining,
         propDailyLossClose,
+        propDailyLossHit,
       }),
     [
       sleep,
@@ -83,6 +86,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
       personalDailyStopHit,
       dailyRiskRemaining,
       propDailyLossClose,
+      propDailyLossHit,
     ]
   );
 }
@@ -105,6 +109,7 @@ function calculateRiskStatus({
   personalDailyStopHit,
   dailyRiskRemaining,
   propDailyLossClose,
+  propDailyLossHit,
 }: UseRiskStatusInput): GateResult {
   let riskScore = 0;
   const reasons: string[] = [];
@@ -175,10 +180,16 @@ function calculateRiskStatus({
     reasons.push("личный дневной стоп достигнут");
   }
 
-  if (dailyRiskRemaining < 0) {
+  if (dailyRiskRemaining <= 0) {
     riskScore += 50;
     readiness.discipline -= 50;
-    reasons.push("дневной риск-бюджет превышен");
+    reasons.push("Дневной риск-лимит достигнут");
+  }
+
+  if (propDailyLossHit) {
+    riskScore += 50;
+    readiness.discipline -= 50;
+    reasons.push("лимит дневной просадки проп-фирмы достигнут");
   }
 
   if (propDailyLossClose) {
@@ -191,11 +202,15 @@ function calculateRiskStatus({
     reasons.push("слишком много сделок за день: 3 или больше");
   }
 
-  if (stopsNumber >= 3) {
+  if (stopsNumber >= 2) {
     riskScore += 30;
     readiness.emotional -= 35;
     readiness.discipline -= 25;
-    reasons.push("3 стопа подряд: высокий риск торговли из желания отбиться");
+    reasons.push("2 стопа подряд");
+  } else if (stopsNumber === 1) {
+    riskScore += 2;
+    readiness.discipline -= 10;
+    warnings.push("Один стоп зафиксирован: ещё одна попытка только сниженным риском.");
   }
 
   if (!plan) {
@@ -246,7 +261,7 @@ function calculateRiskStatus({
     (revenge ? 45 : 0) +
       (urge >= 7 ? 20 : 0) +
       (anger >= 6 ? 15 : 0) +
-      (stopsNumber >= 2 ? 15 : 0) +
+      (stopsNumber >= 2 ? 15 : stopsNumber === 1 ? 8 : 0) +
       (dailyPnlNumber < 0 ? 10 : 0) +
       (tradesTodayNumber >= 3 ? 15 : 0)
   );
@@ -263,7 +278,7 @@ function calculateRiskStatus({
   readiness.emotional = Math.max(0, Math.min(100, Math.round(readiness.emotional)));
   readiness.discipline = Math.max(0, Math.min(100, Math.round(readiness.discipline)));
 
-  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || dailyRiskRemaining < 0 || revenge || !stopSet || validScenarioCount === 0 || stopsNumber >= 3;
+  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || propDailyLossHit || dailyRiskRemaining <= 0 || revenge || !stopSet || validScenarioCount === 0 || stopsNumber >= 2;
 
   if (hardLock) {
     return {

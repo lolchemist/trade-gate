@@ -38,12 +38,7 @@ function calculateTodayMetrics(
     const result = Number(item.trade.actualResult) || 0;
     return result < 0 ? total + Math.abs(result) : total;
   }, 0);
-  const executedRiskUsed = executedTrades.reduce((total, item) => {
-    const tradeRisk = Number(item.trade.actualRisk) || 0;
-    const result = Number(item.trade.actualResult) || 0;
-    return total + (tradeRisk > 0 ? tradeRisk : result < 0 ? Math.abs(result) : 0);
-  }, 0);
-  const riskUsedTotal = plannedRiskUsed + executedRiskUsed;
+  const riskUsedTotal = plannedRiskUsed + realizedLossUsed;
   const remainingRisk = budget - riskUsedTotal;
   const personalDailyStop = Number(accountSettings.personalDailyStop) || 0;
   const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;

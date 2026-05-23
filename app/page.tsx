@@ -206,6 +206,7 @@ export default function TradeGateApp() {
     personalDailyStopHit,
     dailyRiskRemaining,
     propDailyLossClose,
+    propDailyLossHit: todayMetrics.propDailyLossHit,
   });
 
   const { weeklyReport, analyticsStats } = useWeeklyReport(archivedPlans, activePlanDate, emergencyNotes);
