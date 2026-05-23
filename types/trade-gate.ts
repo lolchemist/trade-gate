@@ -118,9 +118,6 @@ export interface TradeArgument {
   id: string;
   name: string;
   description?: string;
-  category?: string;
-  tags?: string[];
-  defaultInstrument?: string;
   isDefault: boolean;
   isActive: boolean;
   createdAt: string;

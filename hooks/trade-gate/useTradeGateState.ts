@@ -85,8 +85,8 @@ export type PlanningAction =
   | { type: "set-account-setting"; field: keyof AccountSettings; value: string }
   | { type: "set-emergency-note"; planDate: string; value: string }
   | { type: "set-emergency-lock"; revenge: boolean; lockUntil: string }
-  | { type: "add-trade-argument"; name: string; description: string; defaultInstrument: string }
-  | { type: "update-trade-argument"; id: string; changes: Partial<Pick<TradeArgument, "name" | "description" | "category" | "tags" | "defaultInstrument" | "isActive">> }
+  | { type: "add-trade-argument"; name: string }
+  | { type: "update-trade-argument"; id: string; name: string }
   | { type: "delete-trade-argument"; id: string }
   | { type: "close-trading-day"; planDate: string; nextPlanDate: string; carryPlanIds?: number[]; carryMode?: CarryScenarioMode }
   | { type: "reset-trading-plan"; activePlanDate: string }
@@ -299,22 +299,36 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         },
       };
     case "add-trade-argument": {
-      const tradeArgument = createCustomTradeArgument({ name: action.name, description: action.description, defaultInstrument: action.defaultInstrument });
+      const name = action.name.trim();
+      if (!name || state.tradeArguments.some((argument) => argument.name.trim().toLowerCase() === name.toLowerCase())) return state;
+      const tradeArgument = createCustomTradeArgument({ name });
       const tradeArguments = [...state.tradeArguments, tradeArgument];
       return { ...state, tradeArguments, setups: tradeArguments };
     }
     case "update-trade-argument": {
+      const name = action.name.trim();
+      if (!name || state.tradeArguments.some((argument) => argument.id !== action.id && argument.name.trim().toLowerCase() === name.toLowerCase())) return state;
       const now = new Date().toISOString();
-      const tradeArguments = state.tradeArguments.map((argument) => (argument.id === action.id ? { ...argument, ...action.changes, updatedAt: now } : argument));
+      const previousName = state.tradeArguments.find((argument) => argument.id === action.id)?.name ?? "";
+      const tradeArguments = state.tradeArguments.map((argument) => (argument.id === action.id ? { ...argument, name, updatedAt: now } : argument));
       return {
         ...state,
         tradeArguments,
         setups: tradeArguments,
+        sessionPlans: state.sessionPlans.map((plan) => renameArgumentInPlan(plan, previousName, name, tradeArguments)),
+        archivedPlans: state.archivedPlans.map((plan) => renameArgumentInPlan(plan, previousName, name, tradeArguments)),
       };
     }
     case "delete-trade-argument": {
-      const tradeArguments = state.tradeArguments.filter((argument) => argument.id !== action.id || argument.isDefault);
-      return { ...state, tradeArguments, setups: tradeArguments };
+      const deletedArgument = state.tradeArguments.find((argument) => argument.id === action.id);
+      const tradeArguments = state.tradeArguments.filter((argument) => argument.id !== action.id);
+      return {
+        ...state,
+        tradeArguments,
+        setups: tradeArguments,
+        sessionPlans: state.sessionPlans.map((plan) => removeArgumentFromPlan(plan, action.id, deletedArgument?.name ?? "", tradeArguments)),
+        archivedPlans: state.archivedPlans.map((plan) => removeArgumentFromPlan(plan, action.id, deletedArgument?.name ?? "", tradeArguments)),
+      };
     }
     case "close-trading-day": {
       const plansToArchive = state.sessionPlans.filter((plan) => plan.planDate === action.planDate);
@@ -401,6 +415,41 @@ function preserveScenarioLabels(plan: SessionPlan, tradeArguments: TradeArgument
     setupId: argumentIds[0] ?? "",
     setupName: argumentNames[0] ?? "",
   });
+}
+
+function renameArgumentInPlan<T extends SessionPlan>(plan: T, previousName: string, nextName: string, tradeArguments: TradeArgument[]): T {
+  const argumentIds = dedupeTextList(plan.argumentIds).filter((id) => tradeArguments.some((argument) => argument.id === id));
+  const argumentNames = dedupeTextList(getTradeArgumentNames(tradeArguments, argumentIds, [])).slice(0, 5);
+  const argumentsList = normalizeScenarioArguments(plan.arguments).map((argument) => (argument.toLowerCase() === previousName.trim().toLowerCase() ? nextName : argument));
+
+  return {
+    ...plan,
+    argumentIds,
+    argumentNames,
+    arguments: normalizeScenarioArguments(argumentsList),
+    setupIds: argumentIds,
+    setupNames: argumentNames,
+    setupId: argumentIds[0] ?? "",
+    setupName: argumentNames[0] ?? "",
+  } as T;
+}
+
+function removeArgumentFromPlan<T extends SessionPlan>(plan: T, argumentId: string, argumentName: string, tradeArguments: TradeArgument[]): T {
+  const normalizedName = argumentName.trim().toLowerCase();
+  const argumentIds = dedupeTextList(plan.argumentIds).filter((id) => id !== argumentId && tradeArguments.some((argument) => argument.id === id));
+  const argumentNames = dedupeTextList(getTradeArgumentNames(tradeArguments, argumentIds, [])).slice(0, 5);
+  const argumentsList = normalizeScenarioArguments(plan.arguments).filter((argument) => argument.trim().toLowerCase() !== normalizedName);
+
+  return {
+    ...plan,
+    argumentIds,
+    argumentNames,
+    arguments: argumentsList,
+    setupIds: argumentIds,
+    setupNames: argumentNames,
+    setupId: argumentIds[0] ?? "",
+    setupName: argumentNames[0] ?? "",
+  } as T;
 }
 
 function archiveScenarioForDay(plan: SessionPlan, state: PlanningState, planDate: string): ArchivedPlan {

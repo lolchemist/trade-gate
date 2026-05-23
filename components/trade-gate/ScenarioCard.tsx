@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, ChevronDown, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronDown, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
-import { DEFAULT_SCENARIO_ARGUMENTS, ENTRY_METHOD_OPTIONS, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
+import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
+import { ArgumentSelector } from "./ArgumentSelector";
+import { EntryMethodSelector } from "./EntryMethodSelector";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
+import { SetupSelector } from "./SetupSelector";
 import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
-import { calculateScenarioTradeMath, dedupeTextList, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, getScenarioArguments, isPlanReady, normalizeScenarioArguments } from "./utils";
+import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -140,13 +143,13 @@ export function ScenarioCard({
           )}
 
           <div className="grid gap-3 md:grid-cols-3">
-            <TradeArgumentMultiSelect item={item} tradeArguments={tradeArguments} onUpdate={onUpdate} />
+            <SetupSelector item={item} tradeArguments={tradeArguments} onUpdate={onUpdate} />
             <SelectInput label="Направление" value={item.direction} setValue={(value) => onUpdate(item.id, "direction", value)} options={directionOptions} />
             <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(value) => onUpdate(item.id, "entryZone", value)} />
           </div>
 
           <div className="mt-3">
-            <ScenarioArgumentsInput item={item} selectedArguments={scenarioArguments} onUpdate={onUpdate} />
+            <ArgumentSelector item={item} availableArguments={tradeArguments.map((argument) => argument.name)} selectedArguments={scenarioArguments} onUpdate={onUpdate} />
           </div>
 
           <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -163,16 +166,7 @@ export function ScenarioCard({
               <StatusPill tone={tradeMath.hasData ? "emerald" : "neutral"}>{tradeMath.hasData ? "Расчёт готов" : "Нет расчёта"}</StatusPill>
             </div>
 
-            <div className="mb-4 max-w-md">
-              <SelectInput
-                label="Способ входа"
-                value={getPlanEntryMethod(item)}
-                setValue={(value) => onUpdate(item.id, "entryMethod", value)}
-                options={ENTRY_METHOD_OPTIONS}
-              />
-              {!getPlanEntryMethod(item) && <div className="mt-2 text-xs text-amber-100">Не выбран способ входа.</div>}
-            </div>
-
+            <EntryMethodSelector item={item} onUpdate={onUpdate} />
 
             <div className="grid gap-3 md:grid-cols-5">
               <NumberInput label="Плановый вход" value={item.tradeEntry} setValue={(value) => onUpdate(item.id, "tradeEntry", value)} />
@@ -363,193 +357,6 @@ function CarryOptionButton({ title, detail, onClick }: { title: string; detail: 
     </button>
   );
 }
-
-function TradeArgumentMultiSelect({
-  item,
-  tradeArguments,
-  onUpdate,
-}: {
-  item: SessionPlan;
-  tradeArguments: TradeArgument[];
-  onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const argumentIds = dedupeTextList(Array.isArray(item.argumentIds) ? item.argumentIds : Array.isArray(item.setupIds) ? item.setupIds : []);
-  const selectedNames = getPlanArgumentNames(item);
-  const selected = argumentIds.length > 0
-    ? argumentIds.map((argumentId, index) => ({
-        id: argumentId,
-        name: tradeArguments.find((argument) => argument.id === argumentId)?.name ?? selectedNames[index] ?? "Аргумент",
-        removable: true,
-      }))
-    : selectedNames.map((name, index) => ({
-        id: `preserved-${item.id}-${index}`,
-        name,
-        removable: false,
-      }));
-  const selectedIdSet = new Set(argumentIds);
-  const normalizedQuery = query.trim().toLowerCase();
-  const activeArguments = tradeArguments.filter((argument) => argument.isActive === true);
-  const filteredArguments = activeArguments.filter((argument) => (normalizedQuery ? argument.name.toLowerCase().includes(normalizedQuery) : true));
-  const limitReached = argumentIds.length >= 5;
-
-  const addArgument = (argumentId: string) => {
-    if (limitReached || selectedIdSet.has(argumentId)) return;
-    onUpdate(item.id, "argumentIds", [...argumentIds, argumentId]);
-    setQuery("");
-  };
-
-  const removeArgument = (argumentId: string) => {
-    onUpdate(
-      item.id,
-      "argumentIds",
-      argumentIds.filter((id) => id !== argumentId)
-    );
-  };
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Торговый аргумент</div>
-      <div className="flex min-h-9 flex-wrap gap-2">
-        {selected.length === 0 ? (
-          <span className="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1.5 text-xs text-amber-100">Аргумент не выбран</span>
-        ) : (
-          selected.map((argument) => (
-            <span key={argument.id} className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-200/[0.07] px-3 py-1.5 text-xs text-emerald-100">
-              {argument.name}
-              {argument.removable && (
-                <button type="button" onClick={() => removeArgument(argument.id)} className="rounded-full text-emerald-100/70 transition hover:text-emerald-50" aria-label={`Убрать аргумент ${argument.name}`}>
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </span>
-          ))
-        )}
-      </div>
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Найти аргумент"
-        className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-      />
-      {limitReached && <div className="mt-2 text-xs text-amber-100">Можно выбрать до 5 аргументов.</div>}
-      <div className="mt-2 flex flex-wrap gap-2">
-        {filteredArguments.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-500">
-            {activeArguments.length === 0 ? "В библиотеке нет активных аргументов." : "По запросу аргументы не найдены."}
-          </div>
-        ) : (
-          filteredArguments.map((argument) => {
-            const selectedAlready = selectedIdSet.has(argument.id);
-            const disabled = selectedAlready || (limitReached && !selectedAlready);
-            return (
-              <button
-                key={argument.id}
-                type="button"
-                onClick={() => addArgument(argument.id)}
-                disabled={disabled}
-                className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-emerald-200/20 hover:bg-emerald-200/[0.07] hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-white/[0.08] disabled:hover:bg-white/[0.04] disabled:hover:text-neutral-300"
-                title={selectedAlready ? "Уже выбран" : limitReached ? "Можно выбрать до 5 аргументов" : argument.name}
-              >
-                {argument.name}
-                {selectedAlready ? " · выбран" : ""}
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ScenarioArgumentsInput({
-  item,
-  selectedArguments,
-  onUpdate,
-}: {
-  item: SessionPlan;
-  selectedArguments: string[];
-  onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const normalizedQuery = query.trim().toLowerCase();
-  const selectedSet = new Set(selectedArguments.map((argument) => argument.toLowerCase()));
-  const quickArguments = DEFAULT_SCENARIO_ARGUMENTS.filter((argument) => {
-    if (selectedSet.has(argument.toLowerCase())) return false;
-    return normalizedQuery ? argument.toLowerCase().includes(normalizedQuery) : true;
-  });
-
-  const updateArguments = (nextArguments: string[]) => {
-    onUpdate(item.id, "arguments", normalizeScenarioArguments(nextArguments));
-  };
-
-  const addArgument = (argument: string) => {
-    const value = argument.trim();
-    if (!value || selectedSet.has(value.toLowerCase())) return;
-    updateArguments([...selectedArguments, value]);
-    setQuery("");
-  };
-
-  const removeArgument = (argument: string) => {
-    updateArguments(selectedArguments.filter((itemArgument) => itemArgument !== argument));
-  };
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Аргументы сценария</div>
-        <StatusPill tone={selectedArguments.length >= 2 ? "emerald" : "amber"}>{selectedArguments.length}/2 минимум</StatusPill>
-      </div>
-      <div className="flex min-h-9 flex-wrap gap-2">
-        {selectedArguments.length === 0 ? (
-          <span className="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1.5 text-xs text-amber-100">Аргументы не добавлены</span>
-        ) : (
-          selectedArguments.map((argument) => (
-            <span key={argument} className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-200/[0.07] px-3 py-1.5 text-xs text-emerald-100">
-              {argument}
-              <button type="button" onClick={() => removeArgument(argument)} className="rounded-full text-emerald-100/70 transition hover:text-emerald-50" aria-label={`Убрать аргумент ${argument}`}>
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </span>
-          ))
-        )}
-      </div>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Добавить аргумент вручную или найти в списке"
-          className="min-h-10 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-        />
-        <Button
-          type="button"
-          onClick={() => addArgument(query)}
-          disabled={!query.trim()}
-          variant="outline"
-          className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1] disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Добавить
-        </Button>
-      </div>
-      {selectedArguments.length === 0 && <div className="mt-2 text-xs text-amber-100">Добавь минимум 2 аргумента.</div>}
-      {selectedArguments.length === 1 && <div className="mt-2 text-xs text-amber-100">Недостаточно аргументов для сценария. Минимум 2 аргумента required.</div>}
-      <div className="mt-2 flex flex-wrap gap-2">
-        {quickArguments.map((argument) => (
-          <button
-            key={argument}
-            type="button"
-            onClick={() => addArgument(argument)}
-            className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-emerald-200/20 hover:bg-emerald-200/[0.07] hover:text-emerald-100"
-          >
-            {argument}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function ExecutionTradeCard({
   scenario,
   trade,

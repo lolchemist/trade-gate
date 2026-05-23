@@ -1,4 +1,4 @@
-import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, DEFAULT_TRADE_ARGUMENTS, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
+import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import type {
   ArchivedPlan,
@@ -79,7 +79,7 @@ export function formatPlanDate(isoDate: string) {
   return monthLabel ? `${Number(day)} ${monthLabel} ${year}` : isoDate;
 }
 
-export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_SYMBOL, id = Date.now(), _tradeArgument?: TradeArgument): SessionPlan {
+export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_SYMBOL, id = Date.now()): SessionPlan {
   const normalizedSymbol = normalizeInstrumentSymbol(symbol);
 
   return {
@@ -222,14 +222,6 @@ export function getTradeArgumentNames(tradeArguments: TradeArgument[], argumentI
   return dedupeTextList(names.length > 0 ? names : fallbackNames);
 }
 
-export function getActiveTradeArguments(tradeArguments: TradeArgument[]) {
-  return tradeArguments.filter((argument) => argument.isActive);
-}
-
-export function getPreferredTradeArgument(tradeArguments: TradeArgument[]) {
-  return getActiveTradeArguments(tradeArguments)[0] ?? tradeArguments[0] ?? DEFAULT_TRADE_ARGUMENTS[0];
-}
-
 export function getPlanArgumentNames(plan: Pick<SessionPlan, "argumentIds" | "argumentNames" | "setupIds" | "setupNames" | "setupId" | "setupName">) {
   const argumentNames = Array.isArray(plan.argumentNames) ? dedupeTextList(plan.argumentNames) : [];
   if (argumentNames.length > 0) return argumentNames;
@@ -284,7 +276,7 @@ export function getEntryTypeLabel(entryType?: EntryType | null, fallback = "Сп
   return entryType ? ENTRY_TYPE_LABELS[entryType] ?? fallback : fallback;
 }
 
-export function createCustomTradeArgument({ name, description = "", defaultInstrument = "" }: { name: string; description?: string; defaultInstrument?: string }): TradeArgument {
+export function createCustomTradeArgument({ name, description = "" }: { name: string; description?: string }): TradeArgument {
   const now = new Date().toISOString();
   const slug = name
     .trim()
@@ -297,7 +289,6 @@ export function createCustomTradeArgument({ name, description = "", defaultInstr
     id: `custom-${slug || "argument"}-${Date.now()}`,
     name: name.trim(),
     description: description.trim(),
-    defaultInstrument: defaultInstrument.trim().toUpperCase(),
     isDefault: false,
     isActive: true,
     createdAt: now,

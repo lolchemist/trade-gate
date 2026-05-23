@@ -335,28 +335,27 @@ function normalizeRiskControls(value: Partial<RiskControlState> | undefined, fal
 }
 
 function normalizeTradeArguments(tradeArguments: TradeArgument[] | undefined, defaultArguments = DEFAULT_TRADE_ARGUMENTS): TradeArgument[] {
-  const normalizedSaved = Array.isArray(tradeArguments)
-    ? tradeArguments.map((argument) => ({
-        ...argument,
-        description: argument.description ?? "",
-        category: argument.category ?? "",
-        tags: Array.isArray(argument.tags) ? argument.tags : [],
-        defaultInstrument: argument.defaultInstrument ? normalizeInstrumentSymbol(argument.defaultInstrument) : "",
-        isDefault: Boolean(argument.isDefault),
-        isActive: argument.isActive ?? true,
-        createdAt: argument.createdAt ?? "2026-01-01T00:00:00.000Z",
-        updatedAt: argument.updatedAt ?? argument.createdAt ?? "2026-01-01T00:00:00.000Z",
-      }))
-    : [];
-  const byId = new Map<string, TradeArgument>(normalizedSaved.map((argument) => [argument.id, argument]));
+  const source = Array.isArray(tradeArguments) ? tradeArguments : defaultArguments;
+  const seenNames = new Set<string>();
 
-  for (const defaultArgument of defaultArguments) {
-    const saved = byId.get(defaultArgument.id);
-    byId.set(defaultArgument.id, saved ? { ...defaultArgument, ...saved, isDefault: true } : defaultArgument);
-  }
+  return source.reduce<TradeArgument[]>((argumentsList, argument, index) => {
+    const name = argument.name?.trim() ?? "";
+    const normalizedName = name.toLowerCase();
+    if (!name || seenNames.has(normalizedName)) return argumentsList;
+    seenNames.add(normalizedName);
 
-  const normalized = [...byId.values()];
-  return normalized.length > 0 ? normalized : DEFAULT_TRADE_ARGUMENTS;
+    argumentsList.push({
+      id: argument.id || `argument-${index}-${normalizedName.replace(/[^a-z0-9а-яё]+/gi, "-")}`,
+      name,
+      description: "",
+      isDefault: false,
+      isActive: true,
+      createdAt: argument.createdAt ?? "2026-01-01T00:00:00.000Z",
+      updatedAt: argument.updatedAt ?? argument.createdAt ?? "2026-01-01T00:00:00.000Z",
+    });
+
+    return argumentsList;
+  }, []);
 }
 
 function normalizeInstrumentImages(images: PlanningState["instrumentImages"] | undefined, defaultImages?: PlanningState["instrumentImages"]) {
@@ -399,8 +398,9 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArgu
   const fallbackPlan = createSessionPlan(plan.planDate ?? fallbackDate, symbol, plan.id ?? Date.now() + index);
   const legacyPointValue = (plan.symbol === "BCOUSD" || plan.symbol === "COCOA") && (!plan.tradePointValue || plan.tradePointValue === "1000");
   const legacySetup = (plan as SessionPlan & { setup?: string }).setup ?? "";
-  const argumentIds = normalizeArgumentIds(plan, legacySetup);
-  const argumentNames = normalizeArgumentNames(plan, argumentIds, legacySetup, tradeArguments);
+  const argumentIds = normalizeArgumentIds(plan, legacySetup, tradeArguments);
+  const argumentNames = normalizeArgumentNames(argumentIds, tradeArguments);
+  const validArgumentNames = new Set(tradeArguments.map((argument) => argument.name.trim().toLowerCase()));
   const normalizedPlan = {
     ...fallbackPlan,
     ...plan,
@@ -413,7 +413,7 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArgu
     carryCount: Number(plan.carryCount) || 0,
     argumentIds,
     argumentNames,
-    arguments: normalizeScenarioArguments(plan.arguments),
+    arguments: normalizeScenarioArguments(plan.arguments).filter((argument) => validArgumentNames.has(argument.toLowerCase())),
     setupIds: argumentIds,
     setupNames: argumentNames,
     setupId: argumentIds[0] || "",
@@ -463,21 +463,29 @@ function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): 
   return [];
 }
 
-function normalizeArgumentIds(plan: SessionPlan, legacySetup: string) {
+function normalizeArgumentIds(plan: SessionPlan, legacySetup: string, tradeArguments: TradeArgument[]) {
+  const validIds = new Set(tradeArguments.map((argument) => argument.id));
+  const byName = new Map(tradeArguments.map((argument) => [argument.name.trim().toLowerCase(), argument.id]));
   const argumentIds = Array.isArray(plan.argumentIds) ? plan.argumentIds.map((argumentId) => argumentId.trim()).filter(Boolean) : [];
-  if (argumentIds.length > 0) return [...new Set(argumentIds)].slice(0, 5);
+  const selectedIds = argumentIds.filter((argumentId) => validIds.has(argumentId));
+  if (selectedIds.length > 0) return [...new Set(selectedIds)].slice(0, 5);
   const setupIds = Array.isArray(plan.setupIds) ? plan.setupIds.map((setupId) => setupId.trim()).filter(Boolean) : [];
-  if (setupIds.length > 0) return [...new Set(setupIds)].slice(0, 5);
-  if (plan.setupId) return [plan.setupId];
-  if (legacySetup) return [`legacy-${legacySetup}`];
-  return [];
+  const selectedSetupIds = setupIds.filter((setupId) => validIds.has(setupId));
+  if (selectedSetupIds.length > 0) return [...new Set(selectedSetupIds)].slice(0, 5);
+  const legacyNames = [
+    ...(Array.isArray(plan.argumentNames) ? plan.argumentNames : []),
+    ...(Array.isArray(plan.setupNames) ? plan.setupNames : []),
+    plan.setupName,
+    legacySetup,
+  ].filter(Boolean);
+  return dedupeTextList(legacyNames)
+    .map((name) => byName.get(name.toLowerCase()))
+    .filter((id): id is string => Boolean(id))
+    .slice(0, 5);
 }
 
-function normalizeArgumentNames(plan: SessionPlan, argumentIds: string[], legacySetup: string, tradeArguments: TradeArgument[]) {
-  const argumentNames = Array.isArray(plan.argumentNames) ? plan.argumentNames : [];
-  const fallbackNames = Array.isArray(plan.setupNames) ? plan.setupNames : [];
-  const legacyNames = [...argumentNames, ...fallbackNames, plan.setupName, legacySetup].filter(Boolean);
-  return dedupeTextList(getTradeArgumentNames(tradeArguments, argumentIds, legacyNames)).slice(0, 5);
+function normalizeArgumentNames(argumentIds: string[], tradeArguments: TradeArgument[]) {
+  return dedupeTextList(getTradeArgumentNames(tradeArguments, argumentIds, [])).slice(0, 5);
 }
 
 function toCloudPayload(state: PlanningState): CloudPayload {
