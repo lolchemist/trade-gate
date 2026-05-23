@@ -76,7 +76,7 @@ export function LoadingHero({ syncStatus }: { syncStatus: string }) {
             </div>
             <div>
               <div className="text-[0.66rem] font-semibold uppercase tracking-[0.28em] text-neutral-500">Поведенческий риск-терминал</div>
-              <div className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-400">Loading trading state…</div>
+              <div className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-400">Проверка торгового состояния…</div>
             </div>
           </div>
           <div className="mt-8 text-4xl font-semibold uppercase leading-[0.92] tracking-[-0.045em] text-neutral-100 md:text-6xl">

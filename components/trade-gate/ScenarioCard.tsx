@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
 import { ENTRY_METHOD_OPTIONS, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
+import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
+import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
 import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
@@ -49,6 +51,7 @@ export function ScenarioCard({
   item,
   index,
   tradeArguments,
+  hasChartImage,
   onUpdate,
   onAddTrade,
   onUpdateTrade,
@@ -61,6 +64,7 @@ export function ScenarioCard({
   item: SessionPlan;
   index: number;
   tradeArguments: TradeArgument[];
+  hasChartImage: boolean;
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
   onUpdateTrade: <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => void;
@@ -74,7 +78,8 @@ export function ScenarioCard({
   const [open, setOpen] = useState(!ready);
   const [carryOpen, setCarryOpen] = useState(false);
   const tradeMath = useMemo(() => calculateScenarioTradeMath(item), [item]);
-  const quality = getQualityScore(item, tradeMath.rr, ready);
+  const diagnostic = useScenarioDiagnostic(item, hasChartImage);
+  const { validation, quality } = diagnostic;
   const stale = item.carryCount >= 5;
   const argumentLabel = getPlanArgumentLabel(item);
   const entryMethod = getPlanEntryMethod(item);
@@ -101,7 +106,7 @@ export function ScenarioCard({
             <ScenarioBadge label="RR" value={tradeMath.rr > 0 ? `1:${tradeMath.rr.toFixed(2)}` : "—"} tone={tradeMath.rr >= 1.5 ? "emerald" : tradeMath.rr > 0 ? "amber" : "neutral"} />
             <ScenarioBadge label="Риск" value={item.tradeRisk ? `$${Number(item.tradeRisk || 0).toFixed(0)}` : "—"} tone="amber" />
             {closed ? <ScenarioBadge label="Факт" value={item.finalResult ? `$${Number(item.finalResult || 0).toFixed(0)}` : "—"} tone={Number(item.finalResult) >= 0 ? "emerald" : "red"} /> : null}
-            <ScenarioBadge label="Качество" value={`${quality}%`} tone={quality >= 75 ? "emerald" : quality >= 45 ? "amber" : "red"} />
+            <ScenarioBadge label="Качество" value={`${quality.score}%`} tone={quality.score >= 75 ? "emerald" : quality.score >= 45 ? "amber" : "red"} />
             <div className="flex items-center justify-end">
               <ChevronDown className={`h-5 w-5 text-neutral-500 transition ${open ? "rotate-180" : ""}`} />
             </div>
@@ -120,6 +125,13 @@ export function ScenarioCard({
           {item.carriedFromDate && (
             <div className="mb-4 rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-xs text-neutral-500">
               Перенесён с даты {item.carriedFromDate}. Исходный сценарий: {item.originScenarioId ?? "—"}.
+            </div>
+          )}
+
+          {!ready && validation.reasons.length > 0 && (
+            <div className="mb-4 grid gap-3 rounded-2xl border border-amber-200/20 bg-amber-200/[0.06] p-4 md:grid-cols-[1fr_1fr]">
+              <MissingList title="Что не хватает" items={diagnostic.missing} />
+              <MissingList title="Что исправить" items={diagnostic.fixes.slice(0, 6)} />
             </div>
           )}
 
@@ -209,6 +221,7 @@ export function ScenarioCard({
                   <ExecutionTradeCard
                     key={trade.id}
                     trade={trade}
+                    scenario={item}
                     index={tradeIndex}
                     scenarioId={item.id}
                     onUpdateTrade={onUpdateTrade}
@@ -442,12 +455,14 @@ function TradeArgumentMultiSelect({
 }
 
 function ExecutionTradeCard({
+  scenario,
   trade,
   index,
   scenarioId,
   onUpdateTrade,
   onRemoveTrade,
 }: {
+  scenario: SessionPlan;
   trade: ScenarioTrade;
   index: number;
   scenarioId: number;
@@ -455,6 +470,7 @@ function ExecutionTradeCard({
   onRemoveTrade: (scenarioId: number, tradeId: string) => void;
 }) {
   const title = trade.executionType === "trade_1" ? "Trade 1" : `Re-entry ${index}`;
+  const executionQuality = useExecutionQuality({ scenario, trade });
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
@@ -462,6 +478,7 @@ function ExecutionTradeCard({
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={trade.status === "take" || trade.status === "manual_profit" ? "emerald" : trade.status === "stop" || trade.status === "manual_loss" ? "red" : "neutral"}>{title}</StatusPill>
           <StatusPill>{executionStatusLabel(trade.status)}</StatusPill>
+          <StatusPill tone={executionQuality.score >= 75 ? "emerald" : executionQuality.score >= 50 ? "amber" : "neutral"}>{executionQuality.label} · {executionQuality.score}%</StatusPill>
         </div>
         <Button type="button" onClick={() => onRemoveTrade(scenarioId, trade.id)} variant="outline" className="rounded-xl border border-rose-200/20 bg-rose-200/[0.06] text-rose-100 hover:bg-rose-200/[0.1]">
           <Trash2 className="h-4 w-4" />
@@ -496,6 +513,30 @@ function ExecutionTradeCard({
           onChange={(value) => onUpdateTrade(scenarioId, trade.id, "executionNotes", value)}
           placeholder="Что реально произошло: качество входа, эмоции, отклонения от плана"
         />
+      </div>
+    </div>
+  );
+}
+
+function MissingList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return (
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100/70">{title}</div>
+        <div className="text-sm text-neutral-400">Критичных пробелов нет.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100/70">{title}</div>
+      <div className="space-y-1.5">
+        {items.map((item) => (
+          <div key={item} className="text-sm text-amber-50/90">
+            {item}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -575,15 +616,4 @@ function canCloseScenario(item: SessionPlan) {
   if (!item.technical) return false;
   if (item.resultStatus === "no_entry") return true;
   return item.finalResult.trim().length > 0;
-}
-
-function getQualityScore(item: SessionPlan, rr: number, ready: boolean) {
-  let score = ready ? 45 : 10;
-  if (getPlanArgumentNames(item).length > 0) score += 10;
-  if (getPlanEntryMethod(item)) score += 5;
-  if (rr >= 1.5) score += 20;
-  if (Number(item.tradeRisk) > 0) score += 10;
-  if (item.note.trim().length > 10) score += 10;
-  if (item.archiveComment.trim().length > 10 || (item.trades ?? []).some((trade) => trade.status !== "planned")) score += 5;
-  return Math.min(100, score);
 }

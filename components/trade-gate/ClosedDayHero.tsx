@@ -44,7 +44,7 @@ export function ClosedDayHero({
               <CheckCircle2 className="h-5 w-5 text-emerald-100" />
             </div>
             <div>
-              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/55">Trading day closed</div>
+              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/55">Торговый день закрыт</div>
               <div className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-400">Сессия · {activePlanDateLabel}</div>
             </div>
           </div>
@@ -68,7 +68,7 @@ export function ClosedDayHero({
             <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
               <div className="flex items-center gap-2 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
                 <Sparkles className="h-3.5 w-3.5 text-emerald-100/70" />
-                Profit / Loss today
+                Финрезультат дня
               </div>
               <div className={`mt-2 font-mono text-4xl font-semibold tabular-nums tracking-[-0.03em] ${pnlPositive ? "text-emerald-50" : "text-amber-100"}`}>
                 {formatSignedCurrency(metrics.realizedPnl)}

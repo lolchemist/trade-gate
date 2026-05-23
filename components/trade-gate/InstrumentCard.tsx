@@ -159,6 +159,7 @@ export function InstrumentCard({
               item={item}
               index={index}
               tradeArguments={tradeArguments}
+              hasChartImage={Boolean(image)}
               onUpdate={onUpdatePlan}
               onAddTrade={onAddTrade}
               onUpdateTrade={onUpdateTrade}

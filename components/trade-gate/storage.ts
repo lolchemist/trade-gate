@@ -233,24 +233,32 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
   const activePlanDate = state.activePlanDate ?? defaultState?.activePlanDate ?? fallbackDate;
   const tradeArguments = normalizeTradeArguments(state.tradeArguments ?? state.setups, defaultState?.tradeArguments ?? defaultState?.setups);
   const sessionPlans = normalizeSessionPlans(state.sessionPlans, fallbackDate, tradeArguments);
+  const archivedPlans = normalizeArchivedPlans(state.archivedPlans, fallbackDate, tradeArguments);
   const emergencyNotes = state.emergencyNotes ?? defaultState?.emergencyNotes ?? {};
   const emergencyLock = state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" };
   const riskControlsByDate = normalizeRiskControlsByDate(state.riskControlsByDate, defaultState?.riskControlsByDate, activePlanDate, emergencyNotes, emergencyLock);
+  const tradingDayReopenedAtByDate = {
+    ...(defaultState?.tradingDayReopenedAtByDate ?? {}),
+    ...(state.tradingDayReopenedAtByDate ?? {}),
+  };
   const tradingDayStatuses = normalizeTradingDayStatuses(
     mergeTradingDayStatuses(defaultState?.tradingDayStatuses, defaultState?.tradingDayStatusByDate, state.tradingDayStatuses, state.tradingDayStatusByDate),
-    activePlanDate
+    activePlanDate,
+    archivedPlans,
+    tradingDayReopenedAtByDate
   );
 
   return {
     tradeArguments,
     setups: tradeArguments,
     sessionPlans: sessionPlans.length > 0 ? sessionPlans : [createSessionPlan(fallbackDate, DEFAULT_INSTRUMENT_SYMBOL, 1)],
-    archivedPlans: normalizeArchivedPlans(state.archivedPlans, fallbackDate, tradeArguments),
+    archivedPlans,
     instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
     tradingDayStatusByDate: tradingDayStatuses,
     tradingDayStatuses,
+    tradingDayReopenedAtByDate,
     riskControlsByDate,
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
     emergencyNotes,
@@ -263,9 +271,23 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
 
 function normalizeTradingDayStatuses(
   statuses: PlanningState["tradingDayStatuses"] | undefined,
-  activePlanDate: string
+  activePlanDate: string,
+  archivedPlans: ArchivedPlan[],
+  reopenedAtByDate: Record<string, string>
 ) {
   const merged = { ...(statuses ?? {}) };
+  const latestArchivedAtByDate = archivedPlans.reduce<Record<string, number>>((dates, plan) => {
+    const archivedAt = Date.parse(plan.archivedAt);
+    dates[plan.planDate] = Math.max(dates[plan.planDate] ?? 0, Number.isFinite(archivedAt) ? archivedAt : 0);
+    return dates;
+  }, {});
+
+  for (const plan of archivedPlans) {
+    const reopenedAt = Date.parse(reopenedAtByDate[plan.planDate] ?? "");
+    const reopenedAfterArchive = Number.isFinite(reopenedAt) && reopenedAt > (latestArchivedAtByDate[plan.planDate] ?? 0);
+    if (!reopenedAfterArchive && merged[plan.planDate] !== "locked") merged[plan.planDate] = "closed";
+  }
+
   if (!merged[activePlanDate]) merged[activePlanDate] = "active";
   return merged;
 }

@@ -16,7 +16,7 @@ import type {
   TradeExecutionStatus,
   TradeExecutionType,
   WeeklyArgumentReport,
-  WeeklyEntryTypeReport,
+  WeeklyEntryMethodReport,
   WeeklyReport,
 } from "./types";
 
@@ -409,11 +409,11 @@ export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanD
   const totalPnl = tradeFacts.reduce((total, item) => total + (Number(item.trade.actualResult) || 0), 0);
   const technicalTradeCount = tradeFacts.filter((item) => item.trade.technical === "yes").length;
   const argumentStats = getArgumentStats(tradeFacts);
-  const entryTypeStats = getEntryMethodStats(tradeFacts);
+  const entryMethodStats = getEntryMethodStats(tradeFacts);
   const bestArgument = bestTradeGroupByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan));
   const worstArgument = worstTradeGroupByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan));
-  const bestEntryType = bestTradeGroup(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран");
-  const worstEntryType = worstTradeGroup(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран");
+  const bestEntryMethod = bestTradeGroup(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран");
+  const worstEntryMethod = worstTradeGroup(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран");
 
   return {
     weekStart,
@@ -427,9 +427,9 @@ export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanD
     bestArgument,
     worstArgument,
     argumentStats,
-    bestEntryType,
-    worstEntryType,
-    entryTypeStats,
+    bestEntryMethod,
+    worstEntryMethod,
+    entryMethodStats,
     stopCount: tradeFacts.filter((item) => item.trade.status === "stop").length,
     takeCount: tradeFacts.filter((item) => item.trade.status === "take").length,
     manualCloseCount: tradeFacts.filter((item) => item.trade.status === "manual_profit" || item.trade.status === "manual_loss" || item.trade.status === "breakeven").length,
@@ -476,7 +476,7 @@ function getArgumentStats(tradeFacts: ArchivedTradeFact[]): WeeklyArgumentReport
     .sort((a, b) => b.totalPnl - a.totalPnl);
 }
 
-function getEntryMethodStats(tradeFacts: ArchivedTradeFact[]): WeeklyEntryTypeReport[] {
+function getEntryMethodStats(tradeFacts: ArchivedTradeFact[]): WeeklyEntryMethodReport[] {
   const groups = new Map<string, { totalPnl: number; tradeCount: number; technicalCount: number; winCount: number }>();
 
   for (const item of tradeFacts) {
@@ -491,9 +491,8 @@ function getEntryMethodStats(tradeFacts: ArchivedTradeFact[]): WeeklyEntryTypeRe
   }
 
   return [...groups.entries()]
-    .map(([entryTypeLabel, stats]) => ({
-      entryType: "unknown" as const,
-      entryTypeLabel,
+    .map(([entryMethod, stats]) => ({
+      entryMethod,
       totalPnl: stats.totalPnl,
       tradeCount: stats.tradeCount,
       technicalTradePercentage: stats.tradeCount > 0 ? Math.round((stats.technicalCount / stats.tradeCount) * 100) : 0,

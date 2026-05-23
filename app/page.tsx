@@ -16,6 +16,7 @@ import { PermissionCard } from "@/components/trade-gate/PermissionCard";
 import { PropRulesCard } from "@/components/trade-gate/PropRulesCard";
 import { ReadinessDashboard } from "@/components/trade-gate/ReadinessDashboard";
 import { RiskBudgetCard } from "@/components/trade-gate/RiskBudgetCard";
+import { ScenarioReadinessSummary } from "@/components/trade-gate/ScenarioReadinessSummary";
 import { TodayMetricsCard } from "@/components/trade-gate/TodayMetricsCard";
 import { TradeArgumentLibraryCard } from "@/components/trade-gate/TradeArgumentLibraryCard";
 import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
@@ -24,6 +25,7 @@ import { ArchiveField, NumberInput, Rule, SectionTitle, Slider, Toggle } from "@
 import { useLocalStoragePersistence } from "@/hooks/trade-gate/useLocalStoragePersistence";
 import { usePermissionToTrade } from "@/hooks/trade-gate/usePermissionToTrade";
 import { useRiskStatus } from "@/hooks/trade-gate/useRiskStatus";
+import { useScenarioDiagnostics } from "@/hooks/trade-gate/useScenarioDiagnostics";
 import { initialPlanningState, planningReducer, type PlanningAction, useTradeGateState } from "@/hooks/trade-gate/useTradeGateState";
 import { useSupabaseSync } from "@/hooks/trade-gate/useSupabaseSync";
 import { useTodayMetrics } from "@/hooks/trade-gate/useTodayMetrics";
@@ -110,18 +112,34 @@ export default function TradeGateApp() {
     dailyRiskBudgets,
     tradingDayStatusByDate,
     tradingDayStatuses,
+    tradingDayReopenedAtByDate,
     riskControlsByDate,
     accountSettings,
     emergencyNotes,
     activePlanDate,
     syncKey,
   } = planning;
+  const { appStatus, isHydrated, isCloudLoaded, isInitialSyncComplete, syncStatus, setSyncStatus, saveNow, loadFromCloud } = useSupabaseSync({
+    storage,
+    planning,
+    dispatchPlanning,
+    initialPlanningState,
+  });
+  const isTradingStateReady = isHydrated && isCloudLoaded && isInitialSyncComplete;
   const activeRiskControls = getRiskControlsForDate(riskControlsByDate, activePlanDate);
   const { sleep, anxiety, urge, anger, dailyPnl, dailyLoss, tradesToday, consecutiveStops, plan, newsChecked, stopSet, revenge, lockUntil } = activeRiskControls;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
   const nextPlanDate = getNextDateISO(activePlanDate);
   const nextPlanDateLabel = formatPlanDate(nextPlanDate);
   const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
+  const chartImageByScenarioId = useMemo(
+    () =>
+      Object.fromEntries(
+        activePlansForDate.map((item) => [item.id, Boolean(instrumentImages[getInstrumentImageKey(activePlanDate, item.symbol)])])
+      ),
+    [activePlanDate, activePlansForDate, instrumentImages]
+  );
+  const scenarioDiagnostics = useScenarioDiagnostics(activePlansForDate, chartImageByScenarioId);
   const closeDaySummary = useMemo(() => {
     const closedScenarios = activePlansForDate.filter((item) => item.status === "closed");
     const noEntryScenarios = activePlansForDate.filter((item) => item.resultStatus === "no_entry");
@@ -151,15 +169,31 @@ export default function TradeGateApp() {
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
   const archivedPlansForDate = useMemo(() => archivedPlans.filter((item) => item.planDate === activePlanDate), [archivedPlans, activePlanDate]);
   const hasArchivedClosedDay = archivedPlansForDate.length > 0;
-  const inferredClosedDay = hasArchivedClosedDay && activePlansForDate.every((item) => item.status === "closed" || item.status === "archived");
-  const effectiveTradingDayStatusByDate = useMemo(
+  const storedTradingDayStatusByDate = useMemo(
+    () => mergeTradingDayStatuses(tradingDayStatuses, tradingDayStatusByDate),
+    [tradingDayStatusByDate, tradingDayStatuses]
+  );
+  const latestArchivedAtForDate = useMemo(
     () =>
-      mergeTradingDayStatuses(
-        tradingDayStatuses,
-        tradingDayStatusByDate,
-        inferredClosedDay ? { [activePlanDate]: "closed" as const } : undefined
-      ),
-    [tradingDayStatusByDate, tradingDayStatuses, inferredClosedDay, activePlanDate]
+      archivedPlansForDate.reduce((latest, item) => {
+        const archivedAt = Date.parse(item.archivedAt);
+        return Math.max(latest, Number.isFinite(archivedAt) ? archivedAt : 0);
+      }, 0),
+    [archivedPlansForDate]
+  );
+  const reopenedAtForDate = Date.parse(tradingDayReopenedAtByDate[activePlanDate] ?? "");
+  const reopenedAfterArchive = Number.isFinite(reopenedAtForDate) && reopenedAtForDate > latestArchivedAtForDate;
+  const selectedDateIsPast = isHydrated && activePlanDate < getDateISO(new Date());
+  const explicitlyReopened = Number.isFinite(reopenedAtForDate);
+  const inferredClosedDay =
+    storedTradingDayStatusByDate[activePlanDate] !== "locked" &&
+    ((hasArchivedClosedDay && !reopenedAfterArchive) || (selectedDateIsPast && !explicitlyReopened));
+  const effectiveTradingDayStatusByDate = useMemo(
+    () => ({
+      ...storedTradingDayStatusByDate,
+      ...(inferredClosedDay ? { [activePlanDate]: "closed" as const } : {}),
+    }),
+    [storedTradingDayStatusByDate, inferredClosedDay, activePlanDate]
   );
   const tradingDayStatus = effectiveTradingDayStatusByDate[activePlanDate] ?? "active";
   const isTradingDayClosed = tradingDayStatus === "closed";
@@ -171,13 +205,6 @@ export default function TradeGateApp() {
   const totalLossUsed = todayMetrics.totalLossUsed;
   const profitProgress = todayMetrics.profitProgress;
   const propDailyLossClose = todayMetrics.propDailyLossClose;
-  const { appStatus, isHydrated, isCloudLoaded, isInitialSyncComplete, syncStatus, setSyncStatus, saveNow, loadFromCloud } = useSupabaseSync({
-    storage,
-    planning,
-    dispatchPlanning,
-    initialPlanningState,
-  });
-  const isTradingStateReady = isHydrated && isCloudLoaded && isInitialSyncComplete;
 
   const bestValidScenario = useMemo(() => getBestValidScenario(activePlansForDate), [activePlansForDate]);
 
@@ -441,100 +468,102 @@ export default function TradeGateApp() {
                   }}
                 />
                 {!isTradingDayClosed && <LockOverlay result={isLocked ? { ...riskResult, status: "LOCKED" } : riskResult} lockUntil={lockUntil} />}
+
+                <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked && !isTradingDayClosed ? "opacity-80" : ""}`}>
+                  <div className="space-y-5">
+                    <PermissionCard permission={permission} />
+                    <TodayMetricsCard metrics={todayMetrics} />
+                    {!isTradingDayClosed && <ScenarioReadinessSummary diagnostics={scenarioDiagnostics} />}
+                    {!isTradingDayClosed && <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />}
+                    <RiskBudgetCard
+                      budgetUsd={activeDailyRiskBudget.budgetUsd}
+                      plannedRiskUsed={plannedRiskUsed}
+                      realizedLossUsed={todayMetrics.realizedLossUsed}
+                      remainingRisk={dailyRiskRemaining}
+                      isClosedDay={isTradingDayClosed}
+                      onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
+                    />
+                  </div>
+
+                  <div className="space-y-5">
+                    <PropRulesCard settings={accountSettings} dailyLossUsed={propDailyLossUsed} totalLossUsed={totalLossUsed} profitProgress={profitProgress} compact />
+                    {!isTradingDayClosed && (
+                      <EmergencyPanel
+                        note={emergencyNote}
+                        onNoteChange={(value) => updateRiskControl("emergencyNote", value)}
+                        onEmergency={triggerEmergencyLock}
+                      />
+                    )}
+
+                    <details className="group rounded-[1.75rem] border border-white/[0.08] bg-white/[0.035] p-5 shadow-xl shadow-black/15 backdrop-blur-xl">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                        <SectionTitle icon={<Timer className="h-4 w-4" />} title="Контрольные вводы" />
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:hidden">Открыть</span>
+                        <span className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:inline">Скрыть</span>
+                      </summary>
+                      <div className={`mt-5 grid gap-5 ${isLocked && !isTradingDayClosed ? "blur-[0.5px]" : ""}`}>
+                        <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
+                              <div className="mt-2 text-xs text-neutral-500">Контрольные вводы для сессии: {activePlanDate}</div>
+                            </div>
+                            <Button onClick={resetRiskControls} variant="outline" className="rounded-xl border border-white/10 bg-black/30 text-xs text-neutral-200 hover:bg-white/10">
+                              Сбросить контрольные вводы
+                            </Button>
+                          </div>
+                          <Slider label="Сон, часов" value={sleep} setValue={(value) => updateRiskControl("sleep", value)} min={0} max={10} suffix="ч" />
+                          <Slider label="Тревога" value={anxiety} setValue={(value) => updateRiskControl("anxiety", value)} min={0} max={10} />
+                          <Slider label="Желание срочно торговать" value={urge} setValue={(value) => updateRiskControl("urge", value)} min={0} max={10} />
+                          <Slider label="Злость / раздражение" value={anger} setValue={(value) => updateRiskControl("anger", value)} min={0} max={10} />
+                        </div>
+
+                        <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+                          <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <NumberInput label="Ручная поправка PnL, $" value={dailyPnl} setValue={(value) => updateRiskControl("dailyPnl", value)} />
+                            <NumberInput label="Ручная поправка убытка, $" value={dailyLoss} setValue={(value) => updateRiskControl("dailyLoss", value)} />
+                            <NumberInput label="Доп. сделок вручную" value={tradesToday} setValue={(value) => updateRiskControl("tradesToday", value)} />
+                            <NumberInput label="Доп. стопов подряд" value={consecutiveStops} setValue={(value) => updateRiskControl("consecutiveStops", value)} />
+                          </div>
+                          <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-xs leading-relaxed text-neutral-500">
+                            Фактические PnL, сделки и стопы на Today считаются из архива выбранной даты. Поля выше оставлены как ручные заметки и не заменяют архивные метрики.
+                          </div>
+                          <div className="grid gap-2">
+                            <Toggle label="Есть чёткий план сделки" value={plan} setValue={(value) => updateRiskControl("plan", value)} />
+                            <Toggle label="Новости проверены" value={newsChecked} setValue={(value) => updateRiskControl("newsChecked", value)} />
+                            <Toggle label="Стоп заранее определён" value={stopSet} setValue={(value) => updateRiskControl("stopSet", value)} />
+                            <Toggle label="Есть желание отбиться" value={revenge} setValue={(value) => dispatchPlanning({ type: "set-emergency-lock", revenge: value, lockUntil })} danger />
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                const until = new Date();
+                                until.setHours(until.getHours() + 2);
+                                dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: until.toISOString() });
+                              }}
+                              variant="outline"
+                              className="rounded-xl border border-rose-200/20 bg-rose-200/[0.07] text-rose-100 hover:bg-rose-200/[0.1]"
+                            >
+                              Блокировка 2 часа
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={() => dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: "" })}
+                              variant="outline"
+                              className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
+                            >
+                              Снять блокировку
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                </div>
               </>
             )}
-
-            <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked && !isTradingDayClosed ? "opacity-80" : ""}`}>
-              <div className="space-y-5">
-                <PermissionCard permission={permission} />
-                <TodayMetricsCard metrics={todayMetrics} />
-                {!isTradingDayClosed && <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />}
-                <RiskBudgetCard
-                  budgetUsd={activeDailyRiskBudget.budgetUsd}
-                  plannedRiskUsed={plannedRiskUsed}
-                  realizedLossUsed={todayMetrics.realizedLossUsed}
-                  remainingRisk={dailyRiskRemaining}
-                  onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}
-                />
-              </div>
-
-              <div className="space-y-5">
-                <PropRulesCard settings={accountSettings} dailyLossUsed={propDailyLossUsed} totalLossUsed={totalLossUsed} profitProgress={profitProgress} compact />
-                {!isTradingDayClosed && (
-                  <EmergencyPanel
-                    note={emergencyNote}
-                    onNoteChange={(value) => updateRiskControl("emergencyNote", value)}
-                    onEmergency={triggerEmergencyLock}
-                  />
-                )}
-
-                <details className="group rounded-[1.75rem] border border-white/[0.08] bg-white/[0.035] p-5 shadow-xl shadow-black/15 backdrop-blur-xl">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                    <SectionTitle icon={<Timer className="h-4 w-4" />} title="Контрольные вводы" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:hidden">Открыть</span>
-                    <span className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 group-open:inline">Скрыть</span>
-                  </summary>
-                  <div className={`mt-5 grid gap-5 ${isLocked && !isTradingDayClosed ? "blur-[0.5px]" : ""}`}>
-                    <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
-                          <div className="mt-2 text-xs text-neutral-500">Контрольные вводы для сессии: {activePlanDate}</div>
-                        </div>
-                        <Button onClick={resetRiskControls} variant="outline" className="rounded-xl border border-white/10 bg-black/30 text-xs text-neutral-200 hover:bg-white/10">
-                          Сбросить контрольные вводы
-                        </Button>
-                      </div>
-                      <Slider label="Сон, часов" value={sleep} setValue={(value) => updateRiskControl("sleep", value)} min={0} max={10} suffix="ч" />
-                      <Slider label="Тревога" value={anxiety} setValue={(value) => updateRiskControl("anxiety", value)} min={0} max={10} />
-                      <Slider label="Желание срочно торговать" value={urge} setValue={(value) => updateRiskControl("urge", value)} min={0} max={10} />
-                      <Slider label="Злость / раздражение" value={anger} setValue={(value) => updateRiskControl("anger", value)} min={0} max={10} />
-                    </div>
-
-                    <div className="space-y-4 rounded-2xl border border-white/10 bg-black/25 p-4">
-                      <SectionTitle icon={<Shield className="h-4 w-4" />} title="Риск-контроль" />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <NumberInput label="Ручная поправка PnL, $" value={dailyPnl} setValue={(value) => updateRiskControl("dailyPnl", value)} />
-                        <NumberInput label="Ручная поправка убытка, $" value={dailyLoss} setValue={(value) => updateRiskControl("dailyLoss", value)} />
-                        <NumberInput label="Доп. сделок вручную" value={tradesToday} setValue={(value) => updateRiskControl("tradesToday", value)} />
-                        <NumberInput label="Доп. стопов подряд" value={consecutiveStops} setValue={(value) => updateRiskControl("consecutiveStops", value)} />
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-xs leading-relaxed text-neutral-500">
-                        Фактические PnL, сделки и стопы на Today считаются из архива выбранной даты. Поля выше оставлены как ручные заметки и не заменяют архивные метрики.
-                      </div>
-                      <div className="grid gap-2">
-                        <Toggle label="Есть чёткий план сделки" value={plan} setValue={(value) => updateRiskControl("plan", value)} />
-                        <Toggle label="Новости проверены" value={newsChecked} setValue={(value) => updateRiskControl("newsChecked", value)} />
-                        <Toggle label="Стоп заранее определён" value={stopSet} setValue={(value) => updateRiskControl("stopSet", value)} />
-                        <Toggle label="Есть желание отбиться" value={revenge} setValue={(value) => dispatchPlanning({ type: "set-emergency-lock", revenge: value, lockUntil })} danger />
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            const until = new Date();
-                            until.setHours(until.getHours() + 2);
-                            dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: until.toISOString() });
-                          }}
-                          variant="outline"
-                          className="rounded-xl border border-rose-200/20 bg-rose-200/[0.07] text-rose-100 hover:bg-rose-200/[0.1]"
-                        >
-                          Блокировка 2 часа
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={() => dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: "" })}
-                          variant="outline"
-                          className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
-                        >
-                          Снять блокировку
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </details>
-              </div>
-            </div>
           </motion.div>
         )}
 
@@ -731,7 +760,7 @@ export default function TradeGateApp() {
               report={weeklyReport}
               byInstrument={analyticsStats.byInstrument}
               byArgument={analyticsStats.byArgument}
-              byEntryType={analyticsStats.byEntryType}
+              byEntryMethod={analyticsStats.byEntryMethod}
               mistakeCount={analyticsStats.mistakeCount}
               revengeNoteCount={analyticsStats.revengeNoteCount}
             />

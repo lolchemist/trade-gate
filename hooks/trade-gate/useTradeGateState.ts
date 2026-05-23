@@ -45,6 +45,7 @@ export const initialPlanningState: PlanningState = {
   dailyRiskBudgets: {},
   tradingDayStatusByDate: {},
   tradingDayStatuses: {},
+  tradingDayReopenedAtByDate: {},
   riskControlsByDate: {
     [initialPlanDate]: createDefaultRiskControls(),
   },
@@ -110,6 +111,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         dailyRiskBudgets: action.payload.dailyRiskBudgets ?? state.dailyRiskBudgets,
         tradingDayStatusByDate: hydratedTradingDayStatuses,
         tradingDayStatuses: hydratedTradingDayStatuses,
+        tradingDayReopenedAtByDate: action.payload.tradingDayReopenedAtByDate ?? state.tradingDayReopenedAtByDate,
         riskControlsByDate: action.payload.riskControlsByDate ?? state.riskControlsByDate,
         accountSettings: action.payload.accountSettings ?? state.accountSettings,
         emergencyNotes: action.payload.emergencyNotes ?? state.emergencyNotes,
@@ -231,6 +233,10 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         ...state,
         tradingDayStatusByDate: { ...state.tradingDayStatusByDate, [action.planDate]: action.status },
         tradingDayStatuses: { ...state.tradingDayStatuses, [action.planDate]: action.status },
+        tradingDayReopenedAtByDate:
+          action.status === "active"
+            ? { ...state.tradingDayReopenedAtByDate, [action.planDate]: new Date().toISOString() }
+            : omitDateKey(state.tradingDayReopenedAtByDate, action.planDate),
       };
     case "set-risk-control": {
       const currentControls = getRiskControlsForDate(state.riskControlsByDate, action.planDate);
@@ -329,6 +335,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           [action.planDate]: "closed",
           [action.nextPlanDate]: state.tradingDayStatusByDate[action.nextPlanDate] ?? "active",
         },
+        tradingDayReopenedAtByDate: omitDateKey(state.tradingDayReopenedAtByDate, action.planDate),
         riskControlsByDate: {
           ...state.riskControlsByDate,
           [action.nextPlanDate]: state.riskControlsByDate[action.nextPlanDate] ?? createDefaultRiskControls({ updatedAt: new Date().toISOString() }),
@@ -478,6 +485,11 @@ function copyInstrumentImage(images: PlanningState["instrumentImages"], fromDate
   return { ...images, [toKey]: images[fromKey] };
 }
 
+function omitDateKey<T>(record: Record<string, T>, date: string) {
+  const next = { ...record };
+  delete next[date];
+  return next;
+}
 
 export function useTradeGateState() {
   return useReducer(planningReducer, initialPlanningState);

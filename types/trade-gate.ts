@@ -172,9 +172,9 @@ export interface WeeklyReport {
   bestArgument: string;
   worstArgument: string;
   argumentStats: WeeklyArgumentReport[];
-  bestEntryType: string;
-  worstEntryType: string;
-  entryTypeStats: WeeklyEntryTypeReport[];
+  bestEntryMethod: string;
+  worstEntryMethod: string;
+  entryMethodStats: WeeklyEntryMethodReport[];
   stopCount: number;
   takeCount: number;
   manualCloseCount: number;
@@ -190,9 +190,8 @@ export interface WeeklyArgumentReport {
   winrate: number;
 }
 
-export interface WeeklyEntryTypeReport {
-  entryType: EntryType | "unknown";
-  entryTypeLabel: string;
+export interface WeeklyEntryMethodReport {
+  entryMethod: string;
   totalPnl: number;
   tradeCount: number;
   technicalTradePercentage: number;
@@ -250,6 +249,7 @@ export interface PlanningState {
   tradingDayStatusByDate: Record<string, TradingDayStatus>;
   /** Legacy alias kept for existing saved state compatibility. */
   tradingDayStatuses: Record<string, TradingDayStatus>;
+  tradingDayReopenedAtByDate: Record<string, string>;
   riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
@@ -326,6 +326,22 @@ export interface ScenarioValidation {
   valid: boolean;
   reasons: string[];
   math: ScenarioTradeMath;
+}
+
+export interface QualityScore {
+  score: number;
+  label: string;
+  strengths: string[];
+  gaps: string[];
+}
+
+export interface ScenarioDiagnostic {
+  scenario: SessionPlan;
+  ready: boolean;
+  validation: ScenarioValidation;
+  quality: QualityScore;
+  missing: string[];
+  fixes: string[];
 }
 
 export type SelectOption<T extends string = string> = {

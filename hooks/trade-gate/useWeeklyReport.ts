@@ -19,7 +19,7 @@ function getAnalyticsStats(archivedPlans: ArchivedPlan[], activePlanDate: string
   return {
     byInstrument: groupTradePnl(tradeFacts, (item) => item.plan.symbol),
     byArgument: groupTradePnlByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan)),
-    byEntryType: groupTradePnl(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран"),
+    byEntryMethod: groupTradePnl(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран"),
     mistakeCount: tradeFacts.filter((item) => item.trade.technical === "no").length,
     revengeNoteCount: Object.entries(emergencyNotes).filter(([date, note]) => date >= weekStart && date <= weekEnd && note.trim().length > 0).length,
   };

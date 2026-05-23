@@ -8,18 +8,20 @@ export function RiskBudgetCard({
   plannedRiskUsed,
   realizedLossUsed = 0,
   remainingRisk,
+  isClosedDay = false,
   onBudgetChange,
 }: {
   budgetUsd: string;
   plannedRiskUsed: number;
   realizedLossUsed?: number;
   remainingRisk: number;
+  isClosedDay?: boolean;
   onBudgetChange: (value: string) => void;
 }) {
   const budget = Number(budgetUsd) || 0;
   const riskUsedTotal = plannedRiskUsed + realizedLossUsed;
   const usedPercent = budget > 0 ? Math.min(100, Math.max(0, (riskUsedTotal / budget) * 100)) : 0;
-  const locked = remainingRisk <= 0;
+  const locked = !isClosedDay && remainingRisk <= 0;
 
   return (
     <TerminalPanel className="p-5" glow={locked ? "red" : usedPercent >= 80 ? "amber" : "emerald"}>
@@ -36,7 +38,13 @@ export function RiskBudgetCard({
       <div className="mt-5">
         <NumberInput label="Изменить бюджет, $" value={budgetUsd} setValue={onBudgetChange} />
       </div>
-      {locked && <div className="mt-4 rounded-2xl border border-rose-200/20 bg-rose-200/[0.07] p-3 text-sm text-rose-100">Дневной риск-лимит достигнут. Статус остаётся заблокированным до снижения зарезервированного риска или новой сессии.</div>}
+      {isClosedDay ? (
+        <div className="mt-4 rounded-2xl border border-emerald-200/15 bg-emerald-200/[0.055] p-3 text-sm text-emerald-50">
+          День завершён: риск больше не является допуском к новым сделкам, а остаётся частью разбора сессии.
+        </div>
+      ) : (
+        locked && <div className="mt-4 rounded-2xl border border-rose-200/20 bg-rose-200/[0.07] p-3 text-sm text-rose-100">Дневной риск-лимит достигнут. Статус остаётся заблокированным до снижения зарезервированного риска или новой сессии.</div>
+      )}
     </TerminalPanel>
   );
 }

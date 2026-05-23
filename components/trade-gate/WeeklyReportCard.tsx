@@ -23,8 +23,8 @@ export function WeeklyReportCard({ report }: { report: WeeklyReport }) {
           <MetricTile label="Худший инструмент" value={report.worstInstrument} tone="red" />
           <MetricTile label="Лучший аргумент" value={report.bestArgument} tone="emerald" />
           <MetricTile label="Худший аргумент" value={report.worstArgument} tone="red" />
-          <MetricTile label="Лучший вход" value={report.bestEntryType} tone="emerald" />
-          <MetricTile label="Худший вход" value={report.worstEntryType} tone="red" />
+          <MetricTile label="Лучший вход" value={report.bestEntryMethod} tone="emerald" />
+          <MetricTile label="Худший вход" value={report.worstEntryMethod} tone="red" />
         </div>
         <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
           <div className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Статистика по аргументам</div>
@@ -52,21 +52,21 @@ export function WeeklyReportCard({ report }: { report: WeeklyReport }) {
       </div>
       <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
         <div className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Статистика по способам входа</div>
-        {report.entryTypeStats.length === 0 ? (
+        {report.entryMethodStats.length === 0 ? (
           <div className="text-sm text-neutral-500">За выбранную неделю пока нет архивных сделок со способом входа.</div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {report.entryTypeStats.map((entryType) => (
-              <div key={entryType.entryTypeLabel} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+            {report.entryMethodStats.map((entryMethod) => (
+              <div key={entryMethod.entryMethod} className="rounded-2xl border border-white/10 bg-black/30 p-3">
                 <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-                  <div className="font-medium text-neutral-100">{entryType.entryTypeLabel}</div>
-                  <div className={`font-mono ${entryType.totalPnl >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatCurrency(entryType.totalPnl)}</div>
+                  <div className="font-medium text-neutral-100">{entryMethod.entryMethod}</div>
+                  <div className={`font-mono ${entryMethod.totalPnl >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatCurrency(entryMethod.totalPnl)}</div>
                 </div>
                 <ProgressMeter
-                  label={`${entryType.tradeCount} сделок`}
-                  value={entryType.winrate}
-                  detail={`Winrate ${entryType.winrate}% · Техничность ${entryType.technicalTradePercentage}%`}
-                  tone={entryType.winrate >= 50 ? "emerald" : "amber"}
+                  label={`${entryMethod.tradeCount} сделок`}
+                  value={entryMethod.winrate}
+                  detail={`Winrate ${entryMethod.winrate}% · Техничность ${entryMethod.technicalTradePercentage}%`}
+                  tone={entryMethod.winrate >= 50 ? "emerald" : "amber"}
                 />
               </div>
             ))}
