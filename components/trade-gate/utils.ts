@@ -219,7 +219,7 @@ export function getTradeArgumentNames(tradeArguments: TradeArgument[], argumentI
     .map((name) => name.trim())
     .filter(Boolean);
 
-  return names.length > 0 ? names : fallbackNames.map((name) => name.trim()).filter(Boolean);
+  return dedupeTextList(names.length > 0 ? names : fallbackNames);
 }
 
 export function getActiveTradeArguments(tradeArguments: TradeArgument[]) {
@@ -231,9 +231,9 @@ export function getPreferredTradeArgument(tradeArguments: TradeArgument[]) {
 }
 
 export function getPlanArgumentNames(plan: Pick<SessionPlan, "argumentIds" | "argumentNames" | "setupIds" | "setupNames" | "setupId" | "setupName">) {
-  const argumentNames = Array.isArray(plan.argumentNames) ? plan.argumentNames.map((name) => name.trim()).filter(Boolean) : [];
+  const argumentNames = Array.isArray(plan.argumentNames) ? dedupeTextList(plan.argumentNames) : [];
   if (argumentNames.length > 0) return argumentNames;
-  const setupNames = Array.isArray(plan.setupNames) ? plan.setupNames.map((name) => name.trim()).filter(Boolean) : [];
+  const setupNames = Array.isArray(plan.setupNames) ? dedupeTextList(plan.setupNames) : [];
   if (setupNames.length > 0) return setupNames;
   if (plan.setupName?.trim()) return [plan.setupName.trim()];
   return [];
@@ -250,11 +250,26 @@ export function getPlanArgumentLabel(plan: Pick<SessionPlan, "argumentIds" | "ar
 
 export function normalizeScenarioArguments(argumentsList: unknown) {
   if (!Array.isArray(argumentsList)) return [];
-  return [...new Set(argumentsList.map((argument) => String(argument).trim()).filter(Boolean))];
+  return dedupeTextList(argumentsList);
 }
 
 export function getScenarioArguments(plan: Pick<SessionPlan, "arguments">) {
   return normalizeScenarioArguments(plan.arguments);
+}
+
+export function dedupeTextList(values: unknown[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+
+  return result;
 }
 
 export function getPlanEntryMethod(plan: Pick<SessionPlan, "entryMethod" | "entryType"> & { trigger?: string; entryMethodName?: string }) {
@@ -737,6 +752,9 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   if (!item.symbol) reasons.push("не выбран инструмент");
   if (!item.direction) reasons.push("не выбрано направление");
   if (!hasTradeArgument) reasons.push("не выбран торговый аргумент");
+  if (scenarioArguments.length === 0) {
+    reasons.push("Добавь минимум 2 аргумента");
+  }
   if (scenarioArguments.length < 2) {
     reasons.push("Недостаточно аргументов для сценария");
     reasons.push("Минимум 2 аргумента required");

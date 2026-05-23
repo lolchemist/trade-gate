@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
-import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields } from "./utils";
+import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields } from "./utils";
 import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
 type CloudStateRow = {
@@ -477,7 +477,7 @@ function normalizeArgumentNames(plan: SessionPlan, argumentIds: string[], legacy
   const argumentNames = Array.isArray(plan.argumentNames) ? plan.argumentNames : [];
   const fallbackNames = Array.isArray(plan.setupNames) ? plan.setupNames : [];
   const legacyNames = [...argumentNames, ...fallbackNames, plan.setupName, legacySetup].filter(Boolean);
-  return getTradeArgumentNames(tradeArguments, argumentIds, legacyNames).slice(0, 5);
+  return dedupeTextList(getTradeArgumentNames(tradeArguments, argumentIds, legacyNames)).slice(0, 5);
 }
 
 function toCloudPayload(state: PlanningState): CloudPayload {

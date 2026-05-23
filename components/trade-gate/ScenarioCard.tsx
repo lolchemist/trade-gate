@@ -6,7 +6,7 @@ import { DEFAULT_SCENARIO_ARGUMENTS, ENTRY_METHOD_OPTIONS, RESULT_STATUS_LABELS,
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
-import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
+import { calculateScenarioTradeMath, dedupeTextList, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, getScenarioArguments, isPlanReady, normalizeScenarioArguments } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -374,7 +374,7 @@ function TradeArgumentMultiSelect({
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
 }) {
   const [query, setQuery] = useState("");
-  const argumentIds = Array.isArray(item.argumentIds) ? item.argumentIds : Array.isArray(item.setupIds) ? item.setupIds : [];
+  const argumentIds = dedupeTextList(Array.isArray(item.argumentIds) ? item.argumentIds : Array.isArray(item.setupIds) ? item.setupIds : []);
   const selectedNames = getPlanArgumentNames(item);
   const selected = argumentIds.length > 0
     ? argumentIds.map((argumentId, index) => ({
@@ -480,7 +480,7 @@ function ScenarioArgumentsInput({
   });
 
   const updateArguments = (nextArguments: string[]) => {
-    onUpdate(item.id, "arguments", [...new Set(nextArguments.map((argument) => argument.trim()).filter(Boolean))]);
+    onUpdate(item.id, "arguments", normalizeScenarioArguments(nextArguments));
   };
 
   const addArgument = (argument: string) => {
@@ -532,9 +532,8 @@ function ScenarioArgumentsInput({
           Добавить
         </Button>
       </div>
-      {selectedArguments.length < 2 && (
-        <div className="mt-2 text-xs text-amber-100">Недостаточно аргументов для сценария. Минимум 2 аргумента required.</div>
-      )}
+      {selectedArguments.length === 0 && <div className="mt-2 text-xs text-amber-100">Добавь минимум 2 аргумента.</div>}
+      {selectedArguments.length === 1 && <div className="mt-2 text-xs text-amber-100">Недостаточно аргументов для сценария. Минимум 2 аргумента required.</div>}
       <div className="mt-2 flex flex-wrap gap-2">
         {quickArguments.map((argument) => (
           <button

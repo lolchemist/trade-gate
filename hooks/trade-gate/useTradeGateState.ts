@@ -6,6 +6,7 @@ import {
   createDefaultRiskControls,
   createScenarioTrade,
   createSessionPlan,
+  dedupeTextList,
   ensureScenarioCloseTrade,
   getInitialPlanDate,
   getInstrumentImageKey,
@@ -141,7 +142,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             return { ...plan, symbol, tradePointValue: getPointValuePerLot(symbol) };
           }
           if (action.field === "argumentIds" || action.field === "setupIds") {
-            const argumentIds = (Array.isArray(action.value) ? action.value : []).filter((value): value is string => typeof value === "string").slice(0, 5);
+            const argumentIds = dedupeTextList(Array.isArray(action.value) ? action.value : []).slice(0, 5);
             const argumentNames = getTradeArgumentNames(state.tradeArguments, argumentIds, plan.argumentNames ?? plan.setupNames);
             return { ...plan, argumentIds, argumentNames, setupIds: argumentIds, setupNames: argumentNames, setupId: argumentIds[0] ?? "", setupName: argumentNames[0] ?? "" };
           }
@@ -387,8 +388,8 @@ function ensureRiskControlsForDate(riskControlsByDate: PlanningState["riskContro
 }
 
 function preserveScenarioLabels(plan: SessionPlan, tradeArguments: TradeArgument[]): SessionPlan {
-  const argumentIds = Array.isArray(plan.argumentIds) ? plan.argumentIds.slice(0, 5) : Array.isArray(plan.setupIds) ? plan.setupIds.slice(0, 5) : [];
-  const argumentNames = getTradeArgumentNames(tradeArguments, argumentIds, getPlanArgumentNames(plan)).slice(0, 5);
+  const argumentIds = dedupeTextList(Array.isArray(plan.argumentIds) ? plan.argumentIds : Array.isArray(plan.setupIds) ? plan.setupIds : []).slice(0, 5);
+  const argumentNames = dedupeTextList(getTradeArgumentNames(tradeArguments, argumentIds, getPlanArgumentNames(plan))).slice(0, 5);
 
   return syncLegacyResultFields({
     ...plan,
@@ -460,6 +461,7 @@ function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryS
     finalResult: "",
     archiveComment: "",
     trades: [],
+    arguments: normalizeScenarioArguments(plan.arguments),
     tradeEntry: withTradePlan ? plan.tradeEntry : "",
     tradeStop: withTradePlan ? plan.tradeStop : "",
     tradeTake: withTradePlan ? plan.tradeTake : "",
