@@ -1,9 +1,9 @@
 import { useReducer } from "react";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_ENTRY_METHODS, DEFAULT_SETUPS } from "@/constants/trade-gate";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_ENTRY_METHODS, DEFAULT_TRADE_ARGUMENTS } from "@/constants/trade-gate";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import {
   createCustomEntryMethod,
-  createCustomSetup,
+  createCustomTradeArgument,
   createDefaultRiskControls,
   createScenarioTrade,
   createSessionPlan,
@@ -11,10 +11,10 @@ import {
   getInitialPlanDate,
   getInstrumentImageKey,
   getPlanEntryMethod,
-  getPlanSetupNames,
-  getPreferredSetup,
+  getPlanArgumentNames,
+  getPreferredTradeArgument,
   getRiskControlsForDate,
-  getSetupNames,
+  getTradeArgumentNames,
   mergeTradingDayStatuses,
   syncLegacyResultFields,
   validateScenarioPlan,
@@ -31,17 +31,18 @@ import type {
   RiskControlState,
   ScenarioTrade,
   SessionPlan,
-  Setup,
   TradeExecutionType,
+  TradeArgument,
   TradingDayStatus,
 } from "@/types/trade-gate";
 
 const initialPlanDate = getInitialPlanDate();
 
 export const initialPlanningState: PlanningState = {
-  setups: DEFAULT_SETUPS,
+  tradeArguments: DEFAULT_TRADE_ARGUMENTS,
+  setups: DEFAULT_TRADE_ARGUMENTS,
   entryMethods: DEFAULT_ENTRY_METHODS,
-  sessionPlans: [createSessionPlan(initialPlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, DEFAULT_SETUPS[0])],
+  sessionPlans: [createSessionPlan(initialPlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, DEFAULT_TRADE_ARGUMENTS[0])],
   archivedPlans: [],
   instrumentImages: {},
   marketIdeaNotes: {},
@@ -86,9 +87,9 @@ export type PlanningAction =
   | { type: "set-account-setting"; field: keyof AccountSettings; value: string }
   | { type: "set-emergency-note"; planDate: string; value: string }
   | { type: "set-emergency-lock"; revenge: boolean; lockUntil: string }
-  | { type: "add-setup"; name: string; description: string; defaultInstrument: string }
-  | { type: "update-setup"; id: string; changes: Partial<Pick<Setup, "name" | "description" | "defaultInstrument" | "isActive">> }
-  | { type: "delete-setup"; id: string }
+  | { type: "add-trade-argument"; name: string; description: string; defaultInstrument: string }
+  | { type: "update-trade-argument"; id: string; changes: Partial<Pick<TradeArgument, "name" | "description" | "category" | "tags" | "defaultInstrument" | "isActive">> }
+  | { type: "delete-trade-argument"; id: string }
   | { type: "add-entry-method"; name: string; description: string }
   | { type: "update-entry-method"; id: string; changes: Partial<Pick<EntryMethod, "name" | "description" | "isActive">> }
   | { type: "delete-entry-method"; id: string }
@@ -107,7 +108,8 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
       );
       return {
         ...state,
-        setups: action.payload.setups ?? state.setups,
+        tradeArguments: action.payload.tradeArguments ?? action.payload.setups ?? state.tradeArguments,
+        setups: action.payload.tradeArguments ?? action.payload.setups ?? state.tradeArguments,
         entryMethods: action.payload.entryMethods ?? state.entryMethods,
         sessionPlans: action.payload.sessionPlans ?? state.sessionPlans,
         archivedPlans: action.payload.archivedPlans ?? state.archivedPlans,
@@ -134,7 +136,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     case "set-sync-key":
       return { ...state, syncKey: action.syncKey };
     case "add-plan":
-      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol, Date.now(), getPreferredSetup(state.setups))] };
+      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol, Date.now(), getPreferredTradeArgument(state.tradeArguments))] };
     case "update-plan":
       return {
         ...state,
@@ -144,10 +146,10 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             const symbol = normalizeInstrumentSymbol(String(action.value));
             return { ...plan, symbol, tradePointValue: getPointValuePerLot(symbol) };
           }
-          if (action.field === "setupIds") {
-            const setupIds = (Array.isArray(action.value) ? action.value : []).filter((value): value is string => typeof value === "string").slice(0, 5);
-            const setupNames = getSetupNames(state.setups, setupIds, plan.setupNames);
-            return { ...plan, setupIds, setupNames, setupId: setupIds[0] ?? "", setupName: setupNames[0] ?? "" };
+          if (action.field === "argumentIds" || action.field === "setupIds") {
+            const argumentIds = (Array.isArray(action.value) ? action.value : []).filter((value): value is string => typeof value === "string").slice(0, 5);
+            const argumentNames = getTradeArgumentNames(state.tradeArguments, argumentIds, plan.argumentNames ?? plan.setupNames);
+            return { ...plan, argumentIds, argumentNames, setupIds: argumentIds, setupNames: argumentNames, setupId: argumentIds[0] ?? "", setupName: argumentNames[0] ?? "" };
           }
           if (action.field === "entryMethodId") {
             const entryMethodId = String(action.value ?? "");
@@ -301,19 +303,24 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           },
         },
       };
-    case "add-setup": {
-      const setup = createCustomSetup({ name: action.name, description: action.description, defaultInstrument: action.defaultInstrument });
-      return { ...state, setups: [...state.setups, setup] };
+    case "add-trade-argument": {
+      const tradeArgument = createCustomTradeArgument({ name: action.name, description: action.description, defaultInstrument: action.defaultInstrument });
+      const tradeArguments = [...state.tradeArguments, tradeArgument];
+      return { ...state, tradeArguments, setups: tradeArguments };
     }
-    case "update-setup": {
+    case "update-trade-argument": {
       const now = new Date().toISOString();
+      const tradeArguments = state.tradeArguments.map((argument) => (argument.id === action.id ? { ...argument, ...action.changes, updatedAt: now } : argument));
       return {
         ...state,
-        setups: state.setups.map((setup) => (setup.id === action.id ? { ...setup, ...action.changes, updatedAt: now } : setup)),
+        tradeArguments,
+        setups: tradeArguments,
       };
     }
-    case "delete-setup":
-      return { ...state, setups: state.setups.filter((setup) => setup.id !== action.id || setup.isDefault) };
+    case "delete-trade-argument": {
+      const tradeArguments = state.tradeArguments.filter((argument) => argument.id !== action.id || argument.isDefault);
+      return { ...state, tradeArguments, setups: tradeArguments };
+    }
     case "add-entry-method": {
       const entryMethod = createCustomEntryMethod({ name: action.name, description: action.description });
       return { ...state, entryMethods: [...state.entryMethods, entryMethod] };
@@ -370,21 +377,21 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           ...plansToArchive.map((plan) => archiveScenarioForDay(plan, state, action.planDate)),
           ...state.archivedPlans,
         ],
-        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredSetup(state.setups)), ...remainingSessionPlans],
+        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredTradeArgument(state.tradeArguments)), ...remainingSessionPlans],
       };
     }
     case "reset-trading-plan":
       return {
         ...state,
         sessionPlans: [
-          createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredSetup(state.setups)),
+          createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredTradeArgument(state.tradeArguments)),
           ...state.sessionPlans.filter((plan) => plan.planDate !== action.activePlanDate),
         ],
       };
     case "reset-session":
       return {
         ...state,
-        sessionPlans: [createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, getPreferredSetup(state.setups))],
+        sessionPlans: [createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, getPreferredTradeArgument(state.tradeArguments))],
         archivedPlans: [],
       };
     default:
@@ -397,18 +404,20 @@ function ensureRiskControlsForDate(riskControlsByDate: PlanningState["riskContro
   return { ...riskControlsByDate, [planDate]: createDefaultRiskControls({ updatedAt: new Date().toISOString() }) };
 }
 
-function preserveScenarioLabels(plan: SessionPlan, setups: Setup[], entryMethods: EntryMethod[]): SessionPlan {
-  const setupIds = Array.isArray(plan.setupIds) ? plan.setupIds.slice(0, 5) : [];
-  const setupNames = getSetupNames(setups, setupIds, getPlanSetupNames(plan)).slice(0, 5);
+function preserveScenarioLabels(plan: SessionPlan, tradeArguments: TradeArgument[], entryMethods: EntryMethod[]): SessionPlan {
+  const argumentIds = Array.isArray(plan.argumentIds) ? plan.argumentIds.slice(0, 5) : Array.isArray(plan.setupIds) ? plan.setupIds.slice(0, 5) : [];
+  const argumentNames = getTradeArgumentNames(tradeArguments, argumentIds, getPlanArgumentNames(plan)).slice(0, 5);
   const entryMethodName = getPlanEntryMethod(plan);
   const entryMethodId = plan.entryMethodId || entryMethods.find((method) => method.name.toLowerCase() === entryMethodName.toLowerCase())?.id || "";
 
   return syncLegacyResultFields({
     ...plan,
-    setupIds,
-    setupNames,
-    setupId: setupIds[0] ?? "",
-    setupName: setupNames[0] ?? "",
+    argumentIds,
+    argumentNames,
+    setupIds: argumentIds,
+    setupNames: argumentNames,
+    setupId: argumentIds[0] ?? "",
+    setupName: argumentNames[0] ?? "",
     entryMethodId,
     entryMethodName,
     entryMethod: entryMethodName,
@@ -430,7 +439,7 @@ function archiveScenarioForDay(plan: SessionPlan, state: PlanningState, planDate
   });
 
   return {
-    ...preserveScenarioLabels(closedPlan, state.setups, state.entryMethods),
+    ...preserveScenarioLabels(closedPlan, state.tradeArguments, state.entryMethods),
     status: "archived",
     archivedAt,
     chartImage,

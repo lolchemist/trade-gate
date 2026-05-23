@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { calculateWeeklyReport, getExecutedScenarioTrades, getPlanSetupNames, getWeekRange } from "@/components/trade-gate/utils";
+import { calculateWeeklyReport, getExecutedScenarioTrades, getPlanArgumentNames, getWeekRange } from "@/components/trade-gate/utils";
 import type { ArchivedPlan, ScenarioTrade } from "@/types/trade-gate";
 
 export function useWeeklyReport(archivedPlans: ArchivedPlan[], activePlanDate: string, emergencyNotes: Record<string, string>) {
@@ -18,7 +18,7 @@ function getAnalyticsStats(archivedPlans: ArchivedPlan[], activePlanDate: string
 
   return {
     byInstrument: groupTradePnl(tradeFacts, (item) => item.plan.symbol),
-    bySetup: groupTradePnlByLabels(tradeFacts, (item) => getPlanSetupNames(item.plan)),
+    byArgument: groupTradePnlByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan)),
     mistakeCount: tradeFacts.filter((item) => item.trade.technical === "no").length,
     revengeNoteCount: Object.entries(emergencyNotes).filter(([date, note]) => date >= weekStart && date <= weekEnd && note.trim().length > 0).length,
   };
@@ -44,7 +44,7 @@ function groupTradePnlByLabels(trades: TradeFact[], getLabels: (item: TradeFact)
 
   for (const item of trades) {
     const labels = getLabels(item);
-    const safeLabels = labels.length > 0 ? labels : ["Сетап не выбран"];
+    const safeLabels = labels.length > 0 ? labels : ["Аргумент не выбран"];
     for (const label of safeLabels) {
       totals.set(label, (totals.get(label) ?? 0) + (Number(item.trade.actualResult) || 0));
     }

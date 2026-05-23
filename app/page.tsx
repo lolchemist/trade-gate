@@ -17,8 +17,8 @@ import { PermissionCard } from "@/components/trade-gate/PermissionCard";
 import { PropRulesCard } from "@/components/trade-gate/PropRulesCard";
 import { ReadinessDashboard } from "@/components/trade-gate/ReadinessDashboard";
 import { RiskBudgetCard } from "@/components/trade-gate/RiskBudgetCard";
-import { SetupPlaybookCard } from "@/components/trade-gate/SetupPlaybookCard";
 import { TodayMetricsCard } from "@/components/trade-gate/TodayMetricsCard";
+import { TradeArgumentLibraryCard } from "@/components/trade-gate/TradeArgumentLibraryCard";
 import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
 import { MARKET_IDEAS, MAX_INSTRUMENT_IMAGE_BYTES, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "@/components/trade-gate/constants";
 import { ArchiveField, NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
@@ -37,8 +37,8 @@ import {
   getInstrumentImageKey,
   getMarketIdeaKey,
   getNextDateISO,
+  getPlanArgumentLabel,
   getPlanEntryMethod,
-  getPlanSetupLabel,
   getRiskControlsForDate,
   getExecutedScenarioTrades,
   getScenarioActualRr,
@@ -77,7 +77,7 @@ const carryModeOptions: { id: CarryScenarioMode; title: string; detail: string }
   {
     id: "scenario",
     title: "Только сценарий",
-    detail: "Перенести сетапы, уровни, способ входа и заметки. Расчёт сделки будет очищен.",
+    detail: "Перенести аргументы, уровни, способ входа и заметки. Расчёт сделки будет очищен.",
   },
   {
     id: "scenario_image",
@@ -103,7 +103,7 @@ export default function TradeGateApp() {
   const [closeCarryMode, setCloseCarryMode] = useState<CarryScenarioMode>("scenario_trade_plan");
 
   const {
-    setups,
+    tradeArguments,
     entryMethods,
     sessionPlans,
     archivedPlans,
@@ -438,7 +438,7 @@ export default function TradeGateApp() {
                     metrics: todayMetrics,
                     disciplineScore: riskResult.readiness.discipline,
                     technicalPercent: closedDayTechnicalPercent,
-                    setupCount: new Set(activePlansForDate.flatMap((item) => item.setupNames)).size,
+                    argumentCount: new Set(activePlansForDate.flatMap((item) => item.argumentNames)).size,
                     onReopen: reopenTradingDay,
                   }}
                 />
@@ -576,7 +576,7 @@ export default function TradeGateApp() {
                       idea={idea}
                       activePlanDate={activePlanDate}
                       plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
-                      setups={setups}
+                      tradeArguments={tradeArguments}
                       entryMethods={entryMethods}
                       instrumentImages={instrumentImages as PersistedImages}
                       marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
@@ -666,7 +666,7 @@ export default function TradeGateApp() {
                         </div>
 
                         <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
-                          <ArchiveField title="Сетапы" value={getPlanSetupLabel(item)} />
+                          <ArchiveField title="Аргументы" value={getPlanArgumentLabel(item)} />
                           <ArchiveField title="Способ входа" value={getPlanEntryMethod(item) || "—"} />
                           <ArchiveField title="Плановый R:R" value={(() => {
                             const entry = Number(item.tradeEntry);
@@ -733,7 +733,7 @@ export default function TradeGateApp() {
             <AnalyticsDashboard
               report={weeklyReport}
               byInstrument={analyticsStats.byInstrument}
-              bySetup={analyticsStats.bySetup}
+              byArgument={analyticsStats.byArgument}
               mistakeCount={analyticsStats.mistakeCount}
               revengeNoteCount={analyticsStats.revengeNoteCount}
             />
@@ -758,11 +758,11 @@ export default function TradeGateApp() {
               onChange={(field, value) => dispatchPlanning({ type: "set-account-setting", field, value })}
             />
 
-            <SetupPlaybookCard
-              setups={setups}
-              onAdd={(name, description, defaultInstrument) => dispatchPlanning({ type: "add-setup", name, description, defaultInstrument })}
-              onUpdate={(id, changes) => dispatchPlanning({ type: "update-setup", id, changes })}
-              onDelete={(id) => dispatchPlanning({ type: "delete-setup", id })}
+            <TradeArgumentLibraryCard
+              tradeArguments={tradeArguments}
+              onAdd={(name, description, defaultInstrument) => dispatchPlanning({ type: "add-trade-argument", name, description, defaultInstrument })}
+              onUpdate={(id, changes) => dispatchPlanning({ type: "update-trade-argument", id, changes })}
+              onDelete={(id) => dispatchPlanning({ type: "delete-trade-argument", id })}
             />
 
             <EntryMethodPlaybookCard
@@ -836,7 +836,7 @@ export default function TradeGateApp() {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-neutral-100">
-                          {item.symbol} · {getPlanSetupLabel(item)}
+                          {item.symbol} · {getPlanArgumentLabel(item)}
                         </span>
                         <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || getPlanEntryMethod(item) || "Зона входа не заполнена"}</span>
                         {item.carryCount >= 5 && <span className="mt-2 block text-xs text-amber-100">Сценарий переносился несколько дней и может быть уже неактуален.</span>}

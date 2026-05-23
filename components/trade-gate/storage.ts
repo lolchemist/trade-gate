@@ -1,8 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_ENTRY_METHODS, DEFAULT_SETUPS, STORAGE_KEY } from "./constants";
-import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getSetupNames, mergeTradingDayStatuses, syncLegacyResultFields } from "./utils";
-import type { ArchivedPlan, CloudPayload, EntryMethod, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, Setup, StorageLoadResult, StorageSaveResult } from "./types";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_ENTRY_METHODS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
+import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, syncLegacyResultFields } from "./utils";
+import type { ArchivedPlan, CloudPayload, EntryMethod, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
 type CloudStateRow = {
   data: unknown;
@@ -231,9 +231,9 @@ function writeLocalState(state: PlanningState) {
 function normalizePlanningState(state: Partial<PlanningState>, defaultState?: PlanningState): PlanningState {
   const fallbackDate = defaultState?.activePlanDate ?? getInitialPlanDate();
   const activePlanDate = state.activePlanDate ?? defaultState?.activePlanDate ?? fallbackDate;
-  const setups = normalizeSetups(state.setups, defaultState?.setups);
+  const tradeArguments = normalizeTradeArguments(state.tradeArguments ?? state.setups, defaultState?.tradeArguments ?? defaultState?.setups);
   const entryMethods = normalizeEntryMethods(state.entryMethods, defaultState?.entryMethods);
-  const sessionPlans = normalizeSessionPlans(state.sessionPlans, fallbackDate, setups, entryMethods);
+  const sessionPlans = normalizeSessionPlans(state.sessionPlans, fallbackDate, tradeArguments, entryMethods);
   const emergencyNotes = state.emergencyNotes ?? defaultState?.emergencyNotes ?? {};
   const emergencyLock = state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" };
   const riskControlsByDate = normalizeRiskControlsByDate(state.riskControlsByDate, defaultState?.riskControlsByDate, activePlanDate, emergencyNotes, emergencyLock);
@@ -243,10 +243,11 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
   );
 
   return {
-    setups,
+    tradeArguments,
+    setups: tradeArguments,
     entryMethods,
     sessionPlans: sessionPlans.length > 0 ? sessionPlans : [createSessionPlan(fallbackDate, DEFAULT_INSTRUMENT_SYMBOL, 1)],
-    archivedPlans: normalizeArchivedPlans(state.archivedPlans, fallbackDate, setups, entryMethods),
+    archivedPlans: normalizeArchivedPlans(state.archivedPlans, fallbackDate, tradeArguments, entryMethods),
     instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
     dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
@@ -313,27 +314,29 @@ function normalizeRiskControls(value: Partial<RiskControlState> | undefined, fal
   });
 }
 
-function normalizeSetups(setups: Setup[] | undefined, defaultSetups = DEFAULT_SETUPS): Setup[] {
-  const normalizedSaved = Array.isArray(setups)
-    ? setups.map((setup) => ({
-        ...setup,
-        description: setup.description ?? "",
-        defaultInstrument: setup.defaultInstrument ? normalizeInstrumentSymbol(setup.defaultInstrument) : "",
-        isDefault: Boolean(setup.isDefault),
-        isActive: setup.isActive ?? true,
-        createdAt: setup.createdAt ?? "2026-01-01T00:00:00.000Z",
-        updatedAt: setup.updatedAt ?? setup.createdAt ?? "2026-01-01T00:00:00.000Z",
+function normalizeTradeArguments(tradeArguments: TradeArgument[] | undefined, defaultArguments = DEFAULT_TRADE_ARGUMENTS): TradeArgument[] {
+  const normalizedSaved = Array.isArray(tradeArguments)
+    ? tradeArguments.map((argument) => ({
+        ...argument,
+        description: argument.description ?? "",
+        category: argument.category ?? "",
+        tags: Array.isArray(argument.tags) ? argument.tags : [],
+        defaultInstrument: argument.defaultInstrument ? normalizeInstrumentSymbol(argument.defaultInstrument) : "",
+        isDefault: Boolean(argument.isDefault),
+        isActive: argument.isActive ?? true,
+        createdAt: argument.createdAt ?? "2026-01-01T00:00:00.000Z",
+        updatedAt: argument.updatedAt ?? argument.createdAt ?? "2026-01-01T00:00:00.000Z",
       }))
     : [];
-  const byId = new Map<string, Setup>(normalizedSaved.map((setup) => [setup.id, setup]));
+  const byId = new Map<string, TradeArgument>(normalizedSaved.map((argument) => [argument.id, argument]));
 
-  for (const defaultSetup of defaultSetups) {
-    const saved = byId.get(defaultSetup.id);
-    byId.set(defaultSetup.id, saved ? { ...defaultSetup, ...saved, isDefault: true } : defaultSetup);
+  for (const defaultArgument of defaultArguments) {
+    const saved = byId.get(defaultArgument.id);
+    byId.set(defaultArgument.id, saved ? { ...defaultArgument, ...saved, isDefault: true } : defaultArgument);
   }
 
   const normalized = [...byId.values()];
-  return normalized.length > 0 ? normalized : DEFAULT_SETUPS;
+  return normalized.length > 0 ? normalized : DEFAULT_TRADE_ARGUMENTS;
 }
 
 function normalizeInstrumentImages(images: PlanningState["instrumentImages"] | undefined, defaultImages?: PlanningState["instrumentImages"]) {
@@ -377,28 +380,28 @@ function normalizeEntryMethods(entryMethods: EntryMethod[] | undefined, defaultE
   return [...byId.values()];
 }
 
-function normalizeSessionPlans(plans: SessionPlan[] | undefined, fallbackDate: string, setups: Setup[], entryMethods: EntryMethod[]): SessionPlan[] {
+function normalizeSessionPlans(plans: SessionPlan[] | undefined, fallbackDate: string, tradeArguments: TradeArgument[], entryMethods: EntryMethod[]): SessionPlan[] {
   if (!Array.isArray(plans)) return [];
 
-  return plans.map((plan, index) => normalizeSessionPlan(plan, fallbackDate, setups, entryMethods, index));
+  return plans.map((plan, index) => normalizeSessionPlan(plan, fallbackDate, tradeArguments, entryMethods, index));
 }
 
-function normalizeArchivedPlans(plans: ArchivedPlan[] | undefined, fallbackDate: string, setups: Setup[], entryMethods: EntryMethod[]): ArchivedPlan[] {
+function normalizeArchivedPlans(plans: ArchivedPlan[] | undefined, fallbackDate: string, tradeArguments: TradeArgument[], entryMethods: EntryMethod[]): ArchivedPlan[] {
   if (!Array.isArray(plans)) return [];
 
   return plans.map((plan, index) => ({
-    ...normalizeSessionPlan(plan, fallbackDate, setups, entryMethods, index),
+    ...normalizeSessionPlan(plan, fallbackDate, tradeArguments, entryMethods, index),
     archivedAt: plan.archivedAt ?? "",
   }));
 }
 
-function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, setups: Setup[], entryMethods: EntryMethod[], index: number): SessionPlan {
+function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArguments: TradeArgument[], entryMethods: EntryMethod[], index: number): SessionPlan {
   const symbol = normalizeInstrumentSymbol(plan.symbol || DEFAULT_INSTRUMENT_SYMBOL);
   const fallbackPlan = createSessionPlan(plan.planDate ?? fallbackDate, symbol, plan.id ?? Date.now() + index);
   const legacyPointValue = (plan.symbol === "BCOUSD" || plan.symbol === "COCOA") && (!plan.tradePointValue || plan.tradePointValue === "1000");
   const legacySetup = (plan as SessionPlan & { setup?: string }).setup ?? "";
-  const setupIds = normalizeSetupIds(plan, legacySetup);
-  const setupNames = normalizeSetupNames(plan, setupIds, legacySetup, setups);
+  const argumentIds = normalizeArgumentIds(plan, legacySetup);
+  const argumentNames = normalizeArgumentNames(plan, argumentIds, legacySetup, tradeArguments);
   const entryMethodName = getPlanEntryMethod(plan);
   const entryMethodId = plan.entryMethodId || entryMethods.find((method) => method.name.toLowerCase() === entryMethodName.toLowerCase())?.id || "";
   const normalizedPlan = {
@@ -411,10 +414,12 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, setups: S
     chartImage: plan.chartImage ?? "",
     chartImageKey: plan.chartImageKey ?? "",
     carryCount: Number(plan.carryCount) || 0,
-    setupIds,
-    setupNames,
-    setupId: setupIds[0] || "",
-    setupName: setupNames[0] || "Сетап не выбран",
+    argumentIds,
+    argumentNames,
+    setupIds: argumentIds,
+    setupNames: argumentNames,
+    setupId: argumentIds[0] || "",
+    setupName: argumentNames[0] || "Аргумент не выбран",
     planDate: plan.planDate ?? fallbackDate,
     symbol,
     entryMethodId,
@@ -462,7 +467,9 @@ function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): 
   return [];
 }
 
-function normalizeSetupIds(plan: SessionPlan, legacySetup: string) {
+function normalizeArgumentIds(plan: SessionPlan, legacySetup: string) {
+  const argumentIds = Array.isArray(plan.argumentIds) ? plan.argumentIds.map((argumentId) => argumentId.trim()).filter(Boolean) : [];
+  if (argumentIds.length > 0) return [...new Set(argumentIds)].slice(0, 5);
   const setupIds = Array.isArray(plan.setupIds) ? plan.setupIds.map((setupId) => setupId.trim()).filter(Boolean) : [];
   if (setupIds.length > 0) return [...new Set(setupIds)].slice(0, 5);
   if (plan.setupId) return [plan.setupId];
@@ -470,15 +477,17 @@ function normalizeSetupIds(plan: SessionPlan, legacySetup: string) {
   return [];
 }
 
-function normalizeSetupNames(plan: SessionPlan, setupIds: string[], legacySetup: string, setups: Setup[]) {
+function normalizeArgumentNames(plan: SessionPlan, argumentIds: string[], legacySetup: string, tradeArguments: TradeArgument[]) {
+  const argumentNames = Array.isArray(plan.argumentNames) ? plan.argumentNames : [];
   const fallbackNames = Array.isArray(plan.setupNames) ? plan.setupNames : [];
-  const legacyNames = [...fallbackNames, plan.setupName, legacySetup].filter(Boolean);
-  return getSetupNames(setups, setupIds, legacyNames).slice(0, 5);
+  const legacyNames = [...argumentNames, ...fallbackNames, plan.setupName, legacySetup].filter(Boolean);
+  return getTradeArgumentNames(tradeArguments, argumentIds, legacyNames).slice(0, 5);
 }
 
 function toCloudPayload(state: PlanningState): CloudPayload {
   return {
-    setups: state.setups,
+    tradeArguments: state.tradeArguments,
+    setups: state.tradeArguments,
     entryMethods: state.entryMethods,
     sessionPlans: state.sessionPlans,
     archivedPlans: state.archivedPlans,

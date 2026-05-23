@@ -37,7 +37,7 @@ type BaseHeroProps = {
     metrics: TodayMetrics;
     disciplineScore: number;
     technicalPercent: number;
-    setupCount: number;
+    argumentCount: number;
     onReopen: () => void;
   };
 };
@@ -125,7 +125,7 @@ function TradingHeroBase({
         metrics={closedDay.metrics}
         disciplineScore={closedDay.disciplineScore}
         technicalPercent={closedDay.technicalPercent}
-        setupCount={closedDay.setupCount}
+        argumentCount={closedDay.argumentCount}
         onReopen={closedDay.onReopen}
       />
     );

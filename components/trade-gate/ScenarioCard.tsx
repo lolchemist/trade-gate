@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
 import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
-import { calculateScenarioTradeMath, getPlanEntryMethod, getPlanSetupLabel, getPlanSetupNames, isPlanReady } from "./utils";
+import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -16,8 +16,8 @@ import type {
   ScenarioTrade,
   SelectOption,
   SessionPlan,
-  Setup,
   TechnicalStatus,
+  TradeArgument,
   TradeExecutionStatus,
   TradeExecutionType,
 } from "./types";
@@ -49,7 +49,7 @@ const technicalOptions = Object.entries(TECHNICAL_STATUS_LABELS).map(([value, la
 export function ScenarioCard({
   item,
   index,
-  setups,
+  tradeArguments,
   entryMethods,
   onUpdate,
   onAddTrade,
@@ -62,7 +62,7 @@ export function ScenarioCard({
 }: {
   item: SessionPlan;
   index: number;
-  setups: Setup[];
+  tradeArguments: TradeArgument[];
   entryMethods: EntryMethod[];
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
@@ -79,7 +79,7 @@ export function ScenarioCard({
   const tradeMath = useMemo(() => calculateScenarioTradeMath(item), [item]);
   const quality = getQualityScore(item, tradeMath.rr, ready);
   const stale = item.carryCount >= 5;
-  const setupLabel = getPlanSetupLabel(item);
+  const argumentLabel = getPlanArgumentLabel(item);
   const entryMethod = getPlanEntryMethod(item);
   const closed = item.status === "closed";
   const canClose = canCloseScenario(item);
@@ -92,7 +92,7 @@ export function ScenarioCard({
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill tone={ready ? "emerald" : "amber"}>{ready ? "Готов" : "Черновик"}</StatusPill>
               <StatusPill tone={lifecycleTone(item.status)}>{lifecycleLabel(item.status)}</StatusPill>
-              <StatusPill>{setupLabel}</StatusPill>
+              <StatusPill>{argumentLabel}</StatusPill>
               <StatusPill tone={item.direction === "long" ? "emerald" : item.direction === "short" ? "red" : "cyan"}>{directionLabel(item.direction)}</StatusPill>
               {entryMethod && <StatusPill tone="neutral">{entryMethod}</StatusPill>}
               {item.carryCount > 0 && <StatusPill tone={stale ? "amber" : "neutral"}>Переносов: {item.carryCount}</StatusPill>}
@@ -127,7 +127,7 @@ export function ScenarioCard({
           )}
 
           <div className="grid gap-3 md:grid-cols-3">
-            <SetupMultiSelect item={item} setups={setups} onUpdate={onUpdate} />
+            <TradeArgumentMultiSelect item={item} tradeArguments={tradeArguments} onUpdate={onUpdate} />
             <SelectInput label="Направление" value={item.direction} setValue={(value) => onUpdate(item.id, "direction", value)} options={directionOptions} />
             <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(value) => onUpdate(item.id, "entryZone", value)} />
           </div>
@@ -291,7 +291,7 @@ export function ScenarioCard({
                   <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Перенос на завтра</div>
                   <CarryOptionButton
                     title="Только сценарий"
-                    detail="Сетапы, уровни, способ входа и заметки. Торговый расчёт будет очищен."
+                    detail="Аргументы, уровни, способ входа и заметки. Торговый расчёт будет очищен."
                     onClick={() => {
                       onCarry(item.id, "scenario");
                       setCarryOpen(false);
@@ -336,22 +336,22 @@ function CarryOptionButton({ title, detail, onClick }: { title: string; detail: 
   );
 }
 
-function SetupMultiSelect({
+function TradeArgumentMultiSelect({
   item,
-  setups,
+  tradeArguments,
   onUpdate,
 }: {
   item: SessionPlan;
-  setups: Setup[];
+  tradeArguments: TradeArgument[];
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
 }) {
   const [query, setQuery] = useState("");
-  const setupIds = Array.isArray(item.setupIds) ? item.setupIds : [];
-  const selectedNames = getPlanSetupNames(item);
-  const selected = setupIds.length > 0
-    ? setupIds.map((setupId, index) => ({
-        id: setupId,
-        name: setups.find((setup) => setup.id === setupId)?.name ?? selectedNames[index] ?? "Сетап",
+  const argumentIds = Array.isArray(item.argumentIds) ? item.argumentIds : Array.isArray(item.setupIds) ? item.setupIds : [];
+  const selectedNames = getPlanArgumentNames(item);
+  const selected = argumentIds.length > 0
+    ? argumentIds.map((argumentId, index) => ({
+        id: argumentId,
+        name: tradeArguments.find((argument) => argument.id === argumentId)?.name ?? selectedNames[index] ?? "Аргумент",
         removable: true,
       }))
     : selectedNames.map((name, index) => ({
@@ -359,38 +359,38 @@ function SetupMultiSelect({
         name,
         removable: false,
       }));
-  const selectedIdSet = new Set(setupIds);
+  const selectedIdSet = new Set(argumentIds);
   const normalizedQuery = query.trim().toLowerCase();
-  const activeSetups = setups.filter((setup) => setup.isActive === true);
-  const filteredSetups = activeSetups.filter((setup) => (normalizedQuery ? setup.name.toLowerCase().includes(normalizedQuery) : true));
-  const limitReached = setupIds.length >= 5;
+  const activeArguments = tradeArguments.filter((argument) => argument.isActive === true);
+  const filteredArguments = activeArguments.filter((argument) => (normalizedQuery ? argument.name.toLowerCase().includes(normalizedQuery) : true));
+  const limitReached = argumentIds.length >= 5;
 
-  const addSetup = (setupId: string) => {
-    if (limitReached || selectedIdSet.has(setupId)) return;
-    onUpdate(item.id, "setupIds", [...setupIds, setupId]);
+  const addArgument = (argumentId: string) => {
+    if (limitReached || selectedIdSet.has(argumentId)) return;
+    onUpdate(item.id, "argumentIds", [...argumentIds, argumentId]);
     setQuery("");
   };
 
-  const removeSetup = (setupId: string) => {
+  const removeArgument = (argumentId: string) => {
     onUpdate(
       item.id,
-      "setupIds",
-      setupIds.filter((id) => id !== setupId)
+      "argumentIds",
+      argumentIds.filter((id) => id !== argumentId)
     );
   };
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Сетапы</div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Аргументы</div>
       <div className="flex min-h-9 flex-wrap gap-2">
         {selected.length === 0 ? (
-          <span className="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1.5 text-xs text-amber-100">Сетап не выбран</span>
+          <span className="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1.5 text-xs text-amber-100">Аргумент не выбран</span>
         ) : (
-          selected.map((setup) => (
-            <span key={setup.id} className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-200/[0.07] px-3 py-1.5 text-xs text-emerald-100">
-              {setup.name}
-              {setup.removable && (
-                <button type="button" onClick={() => removeSetup(setup.id)} className="rounded-full text-emerald-100/70 transition hover:text-emerald-50" aria-label={`Убрать сетап ${setup.name}`}>
+          selected.map((argument) => (
+            <span key={argument.id} className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-200/[0.07] px-3 py-1.5 text-xs text-emerald-100">
+              {argument.name}
+              {argument.removable && (
+                <button type="button" onClick={() => removeArgument(argument.id)} className="rounded-full text-emerald-100/70 transition hover:text-emerald-50" aria-label={`Убрать аргумент ${argument.name}`}>
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -401,29 +401,29 @@ function SetupMultiSelect({
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Найти сетап"
+        placeholder="Найти аргумент"
         className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
       />
-      {limitReached && <div className="mt-2 text-xs text-amber-100">Можно выбрать до 5 сетапов.</div>}
+      {limitReached && <div className="mt-2 text-xs text-amber-100">Можно выбрать до 5 аргументов.</div>}
       <div className="mt-2 flex flex-wrap gap-2">
-        {filteredSetups.length === 0 ? (
+        {filteredArguments.length === 0 ? (
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-500">
-            {activeSetups.length === 0 ? "В плейбуке нет активных сетапов." : "По запросу сетапы не найдены."}
+            {activeArguments.length === 0 ? "В библиотеке нет активных аргументов." : "По запросу аргументы не найдены."}
           </div>
         ) : (
-          filteredSetups.map((setup) => {
-            const selectedAlready = selectedIdSet.has(setup.id);
+          filteredArguments.map((argument) => {
+            const selectedAlready = selectedIdSet.has(argument.id);
             const disabled = selectedAlready || (limitReached && !selectedAlready);
             return (
               <button
-                key={setup.id}
+                key={argument.id}
                 type="button"
-                onClick={() => addSetup(setup.id)}
+                onClick={() => addArgument(argument.id)}
                 disabled={disabled}
                 className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-emerald-200/20 hover:bg-emerald-200/[0.07] hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-white/[0.08] disabled:hover:bg-white/[0.04] disabled:hover:text-neutral-300"
-                title={selectedAlready ? "Уже выбран" : limitReached ? "Можно выбрать до 5 сетапов" : setup.name}
+                title={selectedAlready ? "Уже выбран" : limitReached ? "Можно выбрать до 5 аргументов" : argument.name}
               >
-                {setup.name}
+                {argument.name}
                 {selectedAlready ? " · выбран" : ""}
               </button>
             );
@@ -636,7 +636,7 @@ function canCloseScenario(item: SessionPlan) {
 
 function getQualityScore(item: SessionPlan, rr: number, ready: boolean) {
   let score = ready ? 45 : 10;
-  if (getPlanSetupNames(item).length > 0) score += 10;
+  if (getPlanArgumentNames(item).length > 0) score += 10;
   if (getPlanEntryMethod(item)) score += 5;
   if (rr >= 1.5) score += 20;
   if (Number(item.tradeRisk) > 0) score += 10;

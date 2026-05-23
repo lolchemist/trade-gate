@@ -9,14 +9,14 @@ export function ClosedDayHero({
   metrics,
   disciplineScore,
   technicalPercent,
-  setupCount,
+  argumentCount,
   onReopen,
 }: {
   activePlanDateLabel: string;
   metrics: TodayMetrics;
   disciplineScore: number;
   technicalPercent: number;
-  setupCount: number;
+  argumentCount: number;
   onReopen: () => void;
 }) {
   const message = "День закрыт. Рынок будет и завтра. Лучшее решение сейчас — отдых.";
@@ -58,7 +58,7 @@ export function ClosedDayHero({
           </div>
           <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
             <SummaryPill label="Сделок" value={String(metrics.tradesToday)} />
-            <SummaryPill label="Сетапов" value={String(setupCount)} />
+            <SummaryPill label="Аргументов" value={String(argumentCount)} />
             <SummaryPill label="Статус" value="Завершён" />
           </div>
         </div>

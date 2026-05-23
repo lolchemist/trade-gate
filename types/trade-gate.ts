@@ -47,11 +47,15 @@ export interface SessionPlan {
   originScenarioId?: number;
   carriedFromDate?: string;
   carryCount: number;
+  argumentIds: string[];
+  argumentNames: string[];
+  /** Legacy field kept for old saved states. New logic uses argumentIds/argumentNames. */
   setupIds: string[];
+  /** Legacy field kept for old saved states. New logic uses argumentIds/argumentNames. */
   setupNames: string[];
-  /** Legacy field kept for old saved states. New logic uses setupIds/setupNames. */
+  /** Legacy field kept for old saved states. New logic uses argumentIds/argumentNames. */
   setupId: string;
-  /** Legacy field kept for old saved states. New logic uses setupIds/setupNames. */
+  /** Legacy field kept for old saved states. New logic uses argumentIds/argumentNames. */
   setupName: string;
   symbol: string;
   direction: Direction;
@@ -109,10 +113,12 @@ export interface MarketIdea {
   scenario: string;
 }
 
-export interface Setup {
+export interface TradeArgument {
   id: string;
   name: string;
   description?: string;
+  category?: string;
+  tags?: string[];
   defaultInstrument?: string;
   isDefault: boolean;
   isActive: boolean;
@@ -173,20 +179,22 @@ export interface WeeklyReport {
   technicalTradePercentage: number;
   bestInstrument: string;
   worstInstrument: string;
-  bestSetup: string;
-  worstSetup: string;
-  setupStats: WeeklySetupReport[];
+  bestArgument: string;
+  worstArgument: string;
+  argumentStats: WeeklyArgumentReport[];
   stopCount: number;
   takeCount: number;
   manualCloseCount: number;
   noEntryCount: number;
 }
 
-export interface WeeklySetupReport {
-  setupName: string;
+export interface WeeklyArgumentReport {
+  argumentName: string;
   totalPnl: number;
   tradeCount: number;
   technicalTradePercentage: number;
+  averageRr: number;
+  winrate: number;
 }
 
 export interface PermissionToTrade {
@@ -229,7 +237,9 @@ export interface EmergencyLockState {
 }
 
 export interface PlanningState {
-  setups: Setup[];
+  tradeArguments: TradeArgument[];
+  /** Legacy alias kept for existing saved state compatibility. */
+  setups: TradeArgument[];
   entryMethods: EntryMethod[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
@@ -249,7 +259,9 @@ export interface PlanningState {
 }
 
 export interface CloudPayload {
-  setups: Setup[];
+  tradeArguments: TradeArgument[];
+  /** Legacy alias kept for existing saved state compatibility. */
+  setups: TradeArgument[];
   entryMethods: EntryMethod[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];

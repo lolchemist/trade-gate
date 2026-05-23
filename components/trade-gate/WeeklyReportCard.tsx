@@ -21,22 +21,27 @@ export function WeeklyReportCard({ report }: { report: WeeklyReport }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <MetricTile label="Лучший инструмент" value={report.bestInstrument} tone="emerald" />
           <MetricTile label="Худший инструмент" value={report.worstInstrument} tone="red" />
-          <MetricTile label="Лучший сетап" value={report.bestSetup} tone="emerald" />
-          <MetricTile label="Худший сетап" value={report.worstSetup} tone="red" />
+          <MetricTile label="Лучший аргумент" value={report.bestArgument} tone="emerald" />
+          <MetricTile label="Худший аргумент" value={report.worstArgument} tone="red" />
         </div>
         <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-          <div className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Статистика по сетапам</div>
-          {report.setupStats.length === 0 ? (
+          <div className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Статистика по аргументам</div>
+          {report.argumentStats.length === 0 ? (
             <div className="text-sm text-neutral-500">За выбранную неделю пока нет архивных сделок с входом.</div>
           ) : (
             <div className="space-y-4">
-              {report.setupStats.map((setup) => (
-                <div key={setup.setupName} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+              {report.argumentStats.map((argument) => (
+                <div key={argument.argumentName} className="rounded-2xl border border-white/10 bg-black/30 p-3">
                   <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-                    <div className="font-medium text-neutral-100">{setup.setupName}</div>
-                    <div className={`font-mono ${setup.totalPnl >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatCurrency(setup.totalPnl)}</div>
+                    <div className="font-medium text-neutral-100">{argument.argumentName}</div>
+                    <div className={`font-mono ${argument.totalPnl >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatCurrency(argument.totalPnl)}</div>
                   </div>
-                  <ProgressMeter label={`${setup.tradeCount} сделок`} value={setup.technicalTradePercentage} detail={`${setup.technicalTradePercentage}% техничность`} tone={setup.technicalTradePercentage >= 70 ? "emerald" : "amber"} />
+                  <ProgressMeter
+                    label={`${argument.tradeCount} сделок`}
+                    value={argument.technicalTradePercentage}
+                    detail={`${argument.technicalTradePercentage}% техничность · Winrate ${argument.winrate}% · Avg RR ${argument.averageRr.toFixed(2)}`}
+                    tone={argument.technicalTradePercentage >= 70 ? "emerald" : "amber"}
+                  />
                 </div>
               ))}
             </div>

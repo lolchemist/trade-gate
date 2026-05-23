@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey, isPlanReady, isScenarioPlannedExposure } from "./utils";
 import { MetricTile, ProgressMeter, StatusPill, TerminalPanel } from "./terminal-ui";
-import type { CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, Setup, TradeExecutionType } from "./types";
+import type { CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, TradeArgument, TradeExecutionType } from "./types";
 
 const instrumentAccents: Record<string, { title: string; tone: "emerald" | "amber" | "cyan"; gradient: string }> = {
   "UKOIL.cash": { title: "Энергия", tone: "emerald", gradient: "from-emerald-200/[0.09] via-transparent to-sky-100/[0.05]" },
@@ -15,7 +15,7 @@ export function InstrumentCard({
   idea,
   activePlanDate,
   plans,
-  setups,
+  tradeArguments,
   entryMethods,
   instrumentImages,
   marketIdeaNotes,
@@ -35,7 +35,7 @@ export function InstrumentCard({
   idea: MarketIdea;
   activePlanDate: string;
   plans: SessionPlan[];
-  setups: Setup[];
+  tradeArguments: TradeArgument[];
   entryMethods: EntryMethod[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
@@ -160,7 +160,7 @@ export function InstrumentCard({
               key={item.id}
               item={item}
               index={index}
-              setups={setups}
+              tradeArguments={tradeArguments}
               entryMethods={entryMethods}
               onUpdate={onUpdatePlan}
               onAddTrade={onAddTrade}
