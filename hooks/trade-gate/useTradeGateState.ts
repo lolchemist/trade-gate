@@ -143,6 +143,9 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             const argumentNames = getTradeArgumentNames(state.tradeArguments, argumentIds, plan.argumentNames ?? plan.setupNames);
             return { ...plan, argumentIds, argumentNames, setupIds: argumentIds, setupNames: argumentNames, setupId: argumentIds[0] ?? "", setupName: argumentNames[0] ?? "" };
           }
+          if (action.field === "entryMethod") {
+            return { ...plan, entryMethod: String(action.value ?? ""), entryType: undefined };
+          }
           return { ...plan, [action.field]: action.value } as SessionPlan;
         }),
       };

@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
-import { ENTRY_TYPE_OPTIONS, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
+import { ENTRY_METHOD_OPTIONS, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
-import { calculateScenarioTradeMath, getEntryTypeLabel, getPlanArgumentLabel, getPlanArgumentNames, isPlanReady } from "./utils";
+import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -77,7 +77,7 @@ export function ScenarioCard({
   const quality = getQualityScore(item, tradeMath.rr, ready);
   const stale = item.carryCount >= 5;
   const argumentLabel = getPlanArgumentLabel(item);
-  const entryTypeLabel = getEntryTypeLabel(item.entryType);
+  const entryMethod = getPlanEntryMethod(item);
   const closed = item.status === "closed";
   const canClose = canCloseScenario(item);
 
@@ -90,7 +90,7 @@ export function ScenarioCard({
               <StatusPill tone={ready ? "emerald" : "amber"}>{ready ? "Готов" : "Черновик"}</StatusPill>
               <StatusPill tone={lifecycleTone(item.status)}>{lifecycleLabel(item.status)}</StatusPill>
               <StatusPill>{argumentLabel}</StatusPill>
-              {item.entryType && <StatusPill tone="cyan">{entryTypeLabel}</StatusPill>}
+              {entryMethod && <StatusPill tone="cyan">{entryMethod}</StatusPill>}
               <StatusPill tone={item.direction === "long" ? "emerald" : item.direction === "short" ? "red" : "cyan"}>{directionLabel(item.direction)}</StatusPill>
               {item.carryCount > 0 && <StatusPill tone={stale ? "amber" : "neutral"}>Переносов: {item.carryCount}</StatusPill>}
             </div>
@@ -143,7 +143,16 @@ export function ScenarioCard({
               <StatusPill tone={tradeMath.hasData ? "emerald" : "neutral"}>{tradeMath.hasData ? "Расчёт готов" : "Нет расчёта"}</StatusPill>
             </div>
 
-            <EntryTypeSelector item={item} onUpdate={onUpdate} />
+            <div className="mb-4 max-w-md">
+              <SelectInput
+                label="Способ входа"
+                value={getPlanEntryMethod(item)}
+                setValue={(value) => onUpdate(item.id, "entryMethod", value)}
+                options={ENTRY_METHOD_OPTIONS}
+              />
+              {!getPlanEntryMethod(item) && <div className="mt-2 text-xs text-amber-100">Не выбран способ входа.</div>}
+            </div>
+
 
             <div className="grid gap-3 md:grid-cols-5">
               <NumberInput label="Плановый вход" value={item.tradeEntry} setValue={(value) => onUpdate(item.id, "tradeEntry", value)} />
@@ -432,43 +441,6 @@ function TradeArgumentMultiSelect({
   );
 }
 
-function EntryTypeSelector({
-  item,
-  onUpdate,
-}: {
-  item: SessionPlan;
-  onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
-}) {
-  return (
-    <div className="mb-4 rounded-2xl border border-white/10 bg-black/25 p-3">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Способ входа</div>
-        {!item.entryType && <span className="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1 text-xs text-amber-100">не выбран способ входа</span>}
-      </div>
-      <div className="grid gap-2 sm:grid-cols-4">
-        {ENTRY_TYPE_OPTIONS.map((option) => {
-          const active = item.entryType === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onUpdate(item.id, "entryType", option.value)}
-              className={`min-h-11 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
-                active
-                  ? "border-emerald-200/30 bg-emerald-200/[0.12] text-emerald-50 shadow-lg shadow-emerald-950/25"
-                  : "border-white/[0.08] bg-white/[0.035] text-neutral-300 hover:border-emerald-200/20 hover:bg-emerald-200/[0.06] hover:text-emerald-100"
-              }`}
-              aria-pressed={active}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function ExecutionTradeCard({
   trade,
   index,
@@ -608,7 +580,7 @@ function canCloseScenario(item: SessionPlan) {
 function getQualityScore(item: SessionPlan, rr: number, ready: boolean) {
   let score = ready ? 45 : 10;
   if (getPlanArgumentNames(item).length > 0) score += 10;
-  if (item.entryType) score += 5;
+  if (getPlanEntryMethod(item)) score += 5;
   if (rr >= 1.5) score += 20;
   if (Number(item.tradeRisk) > 0) score += 10;
   if (item.note.trim().length > 10) score += 10;

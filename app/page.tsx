@@ -31,12 +31,12 @@ import { useWeeklyReport } from "@/hooks/trade-gate/useWeeklyReport";
 import {
   formatPlanDate,
   formatSyncStatus,
-  getEntryTypeLabel,
   getDateISO,
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
   getNextDateISO,
+  getPlanEntryMethod,
   getPlanArgumentLabel,
   getRiskControlsForDate,
   getExecutedScenarioTrades,
@@ -664,7 +664,7 @@ export default function TradeGateApp() {
 
                         <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
                           <ArchiveField title="Аргументы" value={getPlanArgumentLabel(item)} />
-                          <ArchiveField title="Способ входа" value={getEntryTypeLabel(item.entryType)} />
+                          <ArchiveField title="Способ входа" value={getPlanEntryMethod(item) || "—"} />
                           <ArchiveField title="Плановый R:R" value={(() => {
                             const entry = Number(item.tradeEntry);
                             const stop = Number(item.tradeStop);
@@ -829,7 +829,7 @@ export default function TradeGateApp() {
                         <span className="block text-sm font-semibold text-neutral-100">
                           {item.symbol} · {getPlanArgumentLabel(item)}
                         </span>
-                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || getEntryTypeLabel(item.entryType)}</span>
+                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || getPlanEntryMethod(item) || "Способ входа не выбран"}</span>
                         {item.carryCount >= 5 && <span className="mt-2 block text-xs text-amber-100">Сценарий переносился несколько дней и может быть уже неактуален.</span>}
                       </span>
                     </label>

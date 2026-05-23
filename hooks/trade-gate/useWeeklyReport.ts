@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { calculateWeeklyReport, getEntryTypeLabel, getExecutedScenarioTrades, getPlanArgumentNames, getWeekRange } from "@/components/trade-gate/utils";
+import { calculateWeeklyReport, getExecutedScenarioTrades, getPlanArgumentNames, getPlanEntryMethod, getWeekRange } from "@/components/trade-gate/utils";
 import type { ArchivedPlan, ScenarioTrade } from "@/types/trade-gate";
 
 export function useWeeklyReport(archivedPlans: ArchivedPlan[], activePlanDate: string, emergencyNotes: Record<string, string>) {
@@ -19,7 +19,7 @@ function getAnalyticsStats(archivedPlans: ArchivedPlan[], activePlanDate: string
   return {
     byInstrument: groupTradePnl(tradeFacts, (item) => item.plan.symbol),
     byArgument: groupTradePnlByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan)),
-    byEntryType: groupTradePnl(tradeFacts, (item) => getEntryTypeLabel(item.plan.entryType)),
+    byEntryType: groupTradePnl(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран"),
     mistakeCount: tradeFacts.filter((item) => item.trade.technical === "no").length,
     revengeNoteCount: Object.entries(emergencyNotes).filter(([date, note]) => date >= weekStart && date <= weekEnd && note.trim().length > 0).length,
   };

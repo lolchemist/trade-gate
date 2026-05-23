@@ -16,10 +16,23 @@ export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
   retest: "Ретест",
 };
 
-export const ENTRY_TYPE_OPTIONS = Object.entries(ENTRY_TYPE_LABELS).map(([value, label]) => ({
-  value: value as EntryType,
-  label,
-}));
+export const DEFAULT_ENTRY_METHODS = [
+  "Отбой",
+  "Пробой",
+  "Ложный пробой",
+  "Ретест",
+  "Импульс",
+  "Откат",
+  "Снятие ликвидности",
+  "Реакция на новости",
+  "Подтверждение объёмом",
+  "Вульф",
+];
+
+export const ENTRY_METHOD_OPTIONS = [
+  { value: "", label: "Выбери способ входа" },
+  ...DEFAULT_ENTRY_METHODS.map((method) => ({ value: method, label: method })),
+];
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   accountSize: "100000",

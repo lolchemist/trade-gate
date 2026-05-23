@@ -62,6 +62,8 @@ export interface SessionPlan {
   symbol: string;
   direction: Direction;
   entryZone: string;
+  entryMethod: string;
+  /** Legacy field kept for saved states from the segmented entry UI. New logic uses entryMethod. */
   entryType?: EntryType;
   stop: string;
   take: string;
