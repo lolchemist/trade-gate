@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
-import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, syncLegacyResultFields } from "./utils";
+import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields } from "./utils";
 import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
 type CloudStateRow = {
@@ -413,6 +413,7 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArgu
     carryCount: Number(plan.carryCount) || 0,
     argumentIds,
     argumentNames,
+    arguments: normalizeScenarioArguments(plan.arguments),
     setupIds: argumentIds,
     setupNames: argumentNames,
     setupId: argumentIds[0] || "",

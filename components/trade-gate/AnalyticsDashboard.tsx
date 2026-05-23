@@ -10,6 +10,8 @@ export function AnalyticsDashboard({
   byInstrument,
   byArgument,
   byEntryMethod,
+  byScenarioArgument,
+  byArgumentCombination,
   mistakeCount,
   revengeNoteCount,
 }: {
@@ -17,6 +19,8 @@ export function AnalyticsDashboard({
   byInstrument: AnalyticsRow[];
   byArgument: AnalyticsRow[];
   byEntryMethod: AnalyticsRow[];
+  byScenarioArgument: AnalyticsRow[];
+  byArgumentCombination: AnalyticsRow[];
   mistakeCount: number;
   revengeNoteCount: number;
 }) {
@@ -26,7 +30,7 @@ export function AnalyticsDashboard({
         <MetricTile label="Итог недели" value={formatCurrency(report.totalPnl)} tone={report.totalPnl >= 0 ? "emerald" : "red"} />
         <MetricTile label="Сделок" value={String(report.tradeCount)} />
         <MetricTile label="Техничность" value={`${report.technicalTradePercentage}%`} tone={report.technicalTradePercentage >= 70 ? "emerald" : "amber"} />
-        <MetricTile label="Ошибок" value={String(mistakeCount)} tone={mistakeCount > 0 ? "red" : "emerald"} />
+        <MetricTile label="Сред. аргументов" value={String(report.averageArgumentsPerTrade)} tone={report.averageArgumentsPerTrade >= 2 ? "emerald" : "amber"} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -44,6 +48,16 @@ export function AnalyticsDashboard({
           <PanelHeader eyebrow="Метод исполнения" title="Финрезультат по способам входа" meta={<Activity className="h-5 w-5 text-neutral-500" />} />
           <Heatmap rows={byEntryMethod} empty="Нет архивных сделок по способам входа за выбранную неделю." />
         </TerminalPanel>
+
+        <TerminalPanel className="p-5" glow="emerald">
+          <PanelHeader eyebrow="Тезисы сценария" title="Финрезультат по аргументам сценария" meta={<Activity className="h-5 w-5 text-neutral-500" />} />
+          <Heatmap rows={byScenarioArgument} empty="Нет архивных сделок с аргументами сценария за выбранную неделю." />
+        </TerminalPanel>
+
+        <TerminalPanel className="p-5" glow="cyan">
+          <PanelHeader eyebrow="Комбинации" title="Лучшие связки аргументов" meta={<Activity className="h-5 w-5 text-neutral-500" />} />
+          <Heatmap rows={byArgumentCombination} empty="Нет комбинаций аргументов за выбранную неделю." />
+        </TerminalPanel>
       </div>
 
       <TerminalPanel className="p-5" glow={report.stopCount > report.takeCount ? "red" : "neutral"}>
@@ -56,7 +70,9 @@ export function AnalyticsDashboard({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <MetricTile label="Без входа" value={String(report.noEntryCount)} />
+            <MetricTile label="Ошибок" value={String(mistakeCount)} tone={mistakeCount > 0 ? "red" : "emerald"} />
             <MetricTile label="Заметки отбиться" value={String(revengeNoteCount)} tone={revengeNoteCount > 0 ? "red" : "neutral"} />
+            <MetricTile label="Лучшая связка" value={report.bestArgumentCombination} tone="emerald" />
             <MetricTile label="Лучший аргумент" value={report.bestArgument} tone="emerald" />
             <MetricTile label="Худший аргумент" value={report.worstArgument} tone="red" />
             <MetricTile label="Лучший вход" value={report.bestEntryMethod} tone="emerald" />

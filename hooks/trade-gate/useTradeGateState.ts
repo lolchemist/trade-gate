@@ -10,9 +10,9 @@ import {
   getInitialPlanDate,
   getInstrumentImageKey,
   getPlanArgumentNames,
-  getPreferredTradeArgument,
   getRiskControlsForDate,
   getTradeArgumentNames,
+  normalizeScenarioArguments,
   mergeTradingDayStatuses,
   syncLegacyResultFields,
   validateScenarioPlan,
@@ -38,7 +38,7 @@ const initialPlanDate = getInitialPlanDate();
 export const initialPlanningState: PlanningState = {
   tradeArguments: DEFAULT_TRADE_ARGUMENTS,
   setups: DEFAULT_TRADE_ARGUMENTS,
-  sessionPlans: [createSessionPlan(initialPlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, DEFAULT_TRADE_ARGUMENTS[0])],
+  sessionPlans: [createSessionPlan(initialPlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1)],
   archivedPlans: [],
   instrumentImages: {},
   marketIdeaNotes: {},
@@ -130,7 +130,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     case "set-sync-key":
       return { ...state, syncKey: action.syncKey };
     case "add-plan":
-      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol, Date.now(), getPreferredTradeArgument(state.tradeArguments))] };
+      return { ...state, sessionPlans: [...state.sessionPlans, createSessionPlan(state.activePlanDate, action.symbol, Date.now())] };
     case "update-plan":
       return {
         ...state,
@@ -147,6 +147,9 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           }
           if (action.field === "entryMethod") {
             return { ...plan, entryMethod: String(action.value ?? ""), entryType: undefined };
+          }
+          if (action.field === "arguments") {
+            return { ...plan, arguments: normalizeScenarioArguments(action.value) };
           }
           return { ...plan, [action.field]: action.value } as SessionPlan;
         }),
@@ -356,21 +359,21 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           ...plansToArchive.map((plan) => archiveScenarioForDay(plan, state, action.planDate)),
           ...state.archivedPlans,
         ],
-        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredTradeArgument(state.tradeArguments)), ...remainingSessionPlans],
+        sessionPlans: nextDayAlreadyPrepared ? [...carriedPlans, ...remainingSessionPlans] : [createSessionPlan(action.nextPlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now()), ...remainingSessionPlans],
       };
     }
     case "reset-trading-plan":
       return {
         ...state,
         sessionPlans: [
-          createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now(), getPreferredTradeArgument(state.tradeArguments)),
+          createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, Date.now()),
           ...state.sessionPlans.filter((plan) => plan.planDate !== action.activePlanDate),
         ],
       };
     case "reset-session":
       return {
         ...state,
-        sessionPlans: [createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1, getPreferredTradeArgument(state.tradeArguments))],
+        sessionPlans: [createSessionPlan(action.activePlanDate, DEFAULT_INSTRUMENT_SYMBOL, 1)],
         archivedPlans: [],
       };
     default:
@@ -391,6 +394,7 @@ function preserveScenarioLabels(plan: SessionPlan, tradeArguments: TradeArgument
     ...plan,
     argumentIds,
     argumentNames,
+    arguments: normalizeScenarioArguments(plan.arguments),
     setupIds: argumentIds,
     setupNames: argumentNames,
     setupId: argumentIds[0] ?? "",

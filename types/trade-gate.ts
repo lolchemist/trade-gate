@@ -51,6 +51,7 @@ export interface SessionPlan {
   carryCount: number;
   argumentIds: string[];
   argumentNames: string[];
+  arguments: string[];
   /** Legacy field kept for old saved states. New logic uses argumentIds/argumentNames. */
   setupIds: string[];
   /** Legacy field kept for old saved states. New logic uses argumentIds/argumentNames. */
@@ -135,6 +136,7 @@ export interface AccountSettings {
   accountSize: string;
   propDailyLossLimit: string;
   personalDailyStop: string;
+  personalMaxRiskPerTrade: string;
   maxLossLimit: string;
   personalMaxLoss: string;
   profitTarget: string;
@@ -179,6 +181,9 @@ export interface WeeklyReport {
   takeCount: number;
   manualCloseCount: number;
   noEntryCount: number;
+  averageArgumentsPerTrade: number;
+  bestArgumentCombination: string;
+  argumentFrequency: WeeklyScenarioArgumentReport[];
 }
 
 export interface WeeklyArgumentReport {
@@ -196,6 +201,12 @@ export interface WeeklyEntryMethodReport {
   tradeCount: number;
   technicalTradePercentage: number;
   winrate: number;
+}
+
+export interface WeeklyScenarioArgumentReport {
+  argument: string;
+  tradeCount: number;
+  totalPnl: number;
 }
 
 export interface PermissionToTrade {
@@ -326,6 +337,9 @@ export interface ScenarioValidation {
   valid: boolean;
   reasons: string[];
   math: ScenarioTradeMath;
+  argumentCount: number;
+  riskValid: boolean;
+  rrValid: boolean;
 }
 
 export interface QualityScore {

@@ -19,6 +19,7 @@ type UseRiskStatusInput = {
   revenge: boolean;
   sessionPlansForDate: SessionPlan[];
   personalDailyStopHit: boolean;
+  personalMaxRiskPerTrade: number;
   dailyRiskRemaining: number;
   propDailyLossClose: boolean;
   propDailyLossHit: boolean;
@@ -41,6 +42,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
     revenge,
     sessionPlansForDate,
     personalDailyStopHit,
+    personalMaxRiskPerTrade,
     dailyRiskRemaining,
     propDailyLossClose,
     propDailyLossHit,
@@ -64,6 +66,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
         revenge,
         sessionPlansForDate,
         personalDailyStopHit,
+        personalMaxRiskPerTrade,
         dailyRiskRemaining,
         propDailyLossClose,
         propDailyLossHit,
@@ -84,6 +87,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
       revenge,
       sessionPlansForDate,
       personalDailyStopHit,
+      personalMaxRiskPerTrade,
       dailyRiskRemaining,
       propDailyLossClose,
       propDailyLossHit,
@@ -107,6 +111,7 @@ function calculateRiskStatus({
   revenge,
   sessionPlansForDate,
   personalDailyStopHit,
+  personalMaxRiskPerTrade,
   dailyRiskRemaining,
   propDailyLossClose,
   propDailyLossHit,
@@ -126,9 +131,13 @@ function calculateRiskStatus({
   const dailyLossNumber = Number(dailyLoss);
   const stopsNumber = Number(consecutiveStops);
   const tradesTodayNumber = Number(tradesToday);
-  const scenarioValidations = sessionPlansForDate.map(validateScenarioPlan);
+  const scenarioValidationOptions = { personalMaxRiskPerTrade };
+  const getRemainingDailyRiskForPlan = (planItem: SessionPlan) => Math.max(0, dailyRiskRemaining + (Number(planItem.tradeRisk) || 0));
+  const scenarioValidations = sessionPlansForDate.map((planItem) =>
+    validateScenarioPlan(planItem, { ...scenarioValidationOptions, remainingDailyRisk: getRemainingDailyRiskForPlan(planItem) })
+  );
   const validScenarioCount = scenarioValidations.filter((item) => item.valid).length;
-  const bestValidScenario = getBestValidScenario(sessionPlansForDate);
+  const bestValidScenario = getBestValidScenario(sessionPlansForDate, { ...scenarioValidationOptions, getRemainingDailyRiskForPlan });
 
   if (isLocked) {
     riskScore += 100;

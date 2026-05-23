@@ -201,12 +201,20 @@ export default function TradeGateApp() {
   const dailyRiskRemaining = todayMetrics.remainingRisk;
   const emergencyNote = activeRiskControls.emergencyNote ?? emergencyNotes[activePlanDate] ?? "";
   const personalDailyStopHit = todayMetrics.personalDailyStopHit;
+  const personalMaxRiskPerTrade = Number(accountSettings.personalMaxRiskPerTrade) || 0;
   const propDailyLossUsed = todayMetrics.propDailyLossUsed;
   const totalLossUsed = todayMetrics.totalLossUsed;
   const profitProgress = todayMetrics.profitProgress;
   const propDailyLossClose = todayMetrics.propDailyLossClose;
 
-  const bestValidScenario = useMemo(() => getBestValidScenario(activePlansForDate), [activePlansForDate]);
+  const bestValidScenario = useMemo(
+    () =>
+      getBestValidScenario(activePlansForDate, {
+        personalMaxRiskPerTrade,
+        getRemainingDailyRiskForPlan: (planItem) => Math.max(0, dailyRiskRemaining + (Number(planItem.tradeRisk) || 0)),
+      }),
+    [activePlansForDate, dailyRiskRemaining, personalMaxRiskPerTrade]
+  );
 
   const sessionPlanReadyCount = useMemo(
     () => activePlansForDate.filter(isPlanReady).length,
@@ -229,6 +237,7 @@ export default function TradeGateApp() {
     revenge,
     sessionPlansForDate: activePlansForDate,
     personalDailyStopHit,
+    personalMaxRiskPerTrade,
     dailyRiskRemaining,
     propDailyLossClose,
     propDailyLossHit: todayMetrics.propDailyLossHit,
@@ -761,6 +770,8 @@ export default function TradeGateApp() {
               byInstrument={analyticsStats.byInstrument}
               byArgument={analyticsStats.byArgument}
               byEntryMethod={analyticsStats.byEntryMethod}
+              byScenarioArgument={analyticsStats.byScenarioArgument}
+              byArgumentCombination={analyticsStats.byArgumentCombination}
               mistakeCount={analyticsStats.mistakeCount}
               revengeNoteCount={analyticsStats.revengeNoteCount}
             />

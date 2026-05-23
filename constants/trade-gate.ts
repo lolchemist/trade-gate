@@ -7,6 +7,10 @@ export const LOSS_LIMIT = -1000;
 
 export const DEFAULT_DAILY_RISK_BUDGET = "1000";
 
+export const MIN_SCENARIO_RR = 1.5;
+
+export const DEFAULT_PERSONAL_MAX_RISK_PER_TRADE = "500";
+
 export const MAX_INSTRUMENT_IMAGE_BYTES = 750_000;
 
 export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
@@ -18,15 +22,24 @@ export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
 
 export const DEFAULT_ENTRY_METHODS = [
   "Отбой",
-  "Пробой",
-  "Ложный пробой",
   "Ретест",
+  "Ложный пробой",
+  "Пробой",
+];
+
+export const DEFAULT_SCENARIO_ARGUMENTS = [
   "Импульс",
-  "Откат",
-  "Снятие ликвидности",
-  "Реакция на новости",
+  "Ретест",
   "Подтверждение объёмом",
+  "Снятие ликвидности",
+  "Тренд старшего ТФ",
+  "Удержание уровня",
+  "Ложный пробой",
+  "Дельта подтверждает",
+  "Дисбаланс",
+  "Поджатие",
   "Вульф",
+  "Реакция на новости",
 ];
 
 export const ENTRY_METHOD_OPTIONS = [
@@ -38,6 +51,7 @@ export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   accountSize: "100000",
   propDailyLossLimit: "5000",
   personalDailyStop: "1000",
+  personalMaxRiskPerTrade: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
   maxLossLimit: "10000",
   personalMaxLoss: "3000",
   profitTarget: "10000",

@@ -30,6 +30,7 @@ export function AccountSettingsCard({
           <NumberInput label="Размер аккаунта, $" value={settings.accountSize} setValue={(value) => onChange("accountSize", value)} />
           <NumberInput label="Дневной лимит проп-фирмы, $" value={settings.propDailyLossLimit} setValue={(value) => onChange("propDailyLossLimit", value)} />
           <NumberInput label="Личный дневной стоп, $" value={settings.personalDailyStop} setValue={(value) => onChange("personalDailyStop", value)} />
+          <NumberInput label="Макс. риск на сделку, $" value={settings.personalMaxRiskPerTrade} setValue={(value) => onChange("personalMaxRiskPerTrade", value)} />
           <NumberInput label="Максимальный лимит убытка, $" value={settings.maxLossLimit} setValue={(value) => onChange("maxLossLimit", value)} />
           <NumberInput label="Личный максимальный убыток, $" value={settings.personalMaxLoss} setValue={(value) => onChange("personalMaxLoss", value)} />
           <NumberInput label="Цель по прибыли, $" value={settings.profitTarget} setValue={(value) => onChange("profitTarget", value)} />

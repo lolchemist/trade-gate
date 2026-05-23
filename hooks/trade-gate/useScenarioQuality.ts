@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { calculateScenarioTradeMath, getPlanArgumentNames, getPlanEntryMethod } from "@/components/trade-gate/utils";
+import { calculateScenarioTradeMath, getPlanArgumentNames, getPlanEntryMethod, getScenarioArguments } from "@/components/trade-gate/utils";
 import type { QualityScore, SessionPlan } from "@/types/trade-gate";
 
 type ScenarioQualityInput = {
@@ -16,6 +16,7 @@ export function calculateScenarioQuality(scenario: SessionPlan, hasChartImage = 
   const gaps: string[] = [];
   let score = 0;
   const math = calculateScenarioTradeMath(scenario);
+  const scenarioArguments = getScenarioArguments(scenario);
 
   const add = (condition: boolean, points: number, strength: string, gap: string) => {
     if (condition) {
@@ -27,6 +28,7 @@ export function calculateScenarioQuality(scenario: SessionPlan, hasChartImage = 
   };
 
   add(getPlanArgumentNames(scenario).length > 0, 15, "есть аргумент для сделки", "нет аргумента для сделки");
+  add(scenarioArguments.length >= 2, 15, "есть минимум 2 аргумента сценария", "нужно минимум 2 аргумента сценария");
   add(Boolean(getPlanEntryMethod(scenario)), 15, "выбран способ входа", "не выбран способ входа");
   add(Boolean(scenario.direction), 8, "направление задано", "не выбрано направление");
   add(Boolean(scenario.entryZone.trim()), 10, "зона входа задана", "не заполнена зона входа");

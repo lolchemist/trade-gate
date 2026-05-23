@@ -1,4 +1,4 @@
-import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_TRADE_ARGUMENTS, ENTRY_TYPE_LABELS } from "./constants";
+import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, DEFAULT_TRADE_ARGUMENTS, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import type {
   ArchivedPlan,
@@ -79,8 +79,7 @@ export function formatPlanDate(isoDate: string) {
   return monthLabel ? `${Number(day)} ${monthLabel} ${year}` : isoDate;
 }
 
-export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_SYMBOL, id = Date.now(), tradeArgument?: TradeArgument): SessionPlan {
-  const selectedArgument = tradeArgument ?? DEFAULT_TRADE_ARGUMENTS[0];
+export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_SYMBOL, id = Date.now(), _tradeArgument?: TradeArgument): SessionPlan {
   const normalizedSymbol = normalizeInstrumentSymbol(symbol);
 
   return {
@@ -95,12 +94,13 @@ export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_
     originScenarioId: undefined,
     carriedFromDate: undefined,
     carryCount: 0,
-    argumentIds: selectedArgument?.id ? [selectedArgument.id] : [],
-    argumentNames: selectedArgument?.name ? [selectedArgument.name] : [],
-    setupIds: selectedArgument?.id ? [selectedArgument.id] : [],
-    setupNames: selectedArgument?.name ? [selectedArgument.name] : [],
-    setupId: selectedArgument?.id ?? "",
-    setupName: selectedArgument?.name ?? "Аргумент не выбран",
+    argumentIds: [],
+    argumentNames: [],
+    arguments: [],
+    setupIds: [],
+    setupNames: [],
+    setupId: "",
+    setupName: "Аргумент не выбран",
     symbol: normalizedSymbol,
     direction: "long",
     entryZone: "",
@@ -246,6 +246,15 @@ export function getPlanArgumentName(plan: Pick<SessionPlan, "argumentIds" | "arg
 export function getPlanArgumentLabel(plan: Pick<SessionPlan, "argumentIds" | "argumentNames" | "setupIds" | "setupNames" | "setupId" | "setupName">) {
   const names = getPlanArgumentNames(plan);
   return names.length > 0 ? names.join(", ") : "Аргумент не выбран";
+}
+
+export function normalizeScenarioArguments(argumentsList: unknown) {
+  if (!Array.isArray(argumentsList)) return [];
+  return [...new Set(argumentsList.map((argument) => String(argument).trim()).filter(Boolean))];
+}
+
+export function getScenarioArguments(plan: Pick<SessionPlan, "arguments">) {
+  return normalizeScenarioArguments(plan.arguments);
 }
 
 export function getPlanEntryMethod(plan: Pick<SessionPlan, "entryMethod" | "entryType"> & { trigger?: string; entryMethodName?: string }) {
@@ -410,6 +419,8 @@ export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanD
   const technicalTradeCount = tradeFacts.filter((item) => item.trade.technical === "yes").length;
   const argumentStats = getArgumentStats(tradeFacts);
   const entryMethodStats = getEntryMethodStats(tradeFacts);
+  const scenarioArgumentStats = getScenarioArgumentStats(tradeFacts);
+  const argumentCombinations = getArgumentCombinationStats(tradeFacts);
   const bestArgument = bestTradeGroupByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan));
   const worstArgument = worstTradeGroupByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan));
   const bestEntryMethod = bestTradeGroup(tradeFacts, (item) => getPlanEntryMethod(item.plan) || "Способ не выбран");
@@ -434,6 +445,12 @@ export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanD
     takeCount: tradeFacts.filter((item) => item.trade.status === "take").length,
     manualCloseCount: tradeFacts.filter((item) => item.trade.status === "manual_profit" || item.trade.status === "manual_loss" || item.trade.status === "breakeven").length,
     noEntryCount: plans.filter((plan) => getScenarioTrades(plan).length === 0 || getScenarioTrades(plan).every((trade) => trade.status === "planned")).length,
+    averageArgumentsPerTrade:
+      tradeFacts.length > 0
+        ? Number((tradeFacts.reduce((total, item) => total + getScenarioArguments(item.plan).length, 0) / tradeFacts.length).toFixed(1))
+        : 0,
+    bestArgumentCombination: argumentCombinations[0]?.label ?? "—",
+    argumentFrequency: scenarioArgumentStats,
   };
 }
 
@@ -499,6 +516,37 @@ function getEntryMethodStats(tradeFacts: ArchivedTradeFact[]): WeeklyEntryMethod
       winrate: stats.tradeCount > 0 ? Math.round((stats.winCount / stats.tradeCount) * 100) : 0,
     }))
     .sort((a, b) => b.totalPnl - a.totalPnl);
+}
+
+function getScenarioArgumentStats(tradeFacts: ArchivedTradeFact[]) {
+  const groups = new Map<string, { totalPnl: number; tradeCount: number }>();
+
+  for (const item of tradeFacts) {
+    for (const argument of getScenarioArguments(item.plan)) {
+      const current = groups.get(argument) ?? { totalPnl: 0, tradeCount: 0 };
+      current.totalPnl += Number(item.trade.actualResult) || 0;
+      current.tradeCount += 1;
+      groups.set(argument, current);
+    }
+  }
+
+  return [...groups.entries()]
+    .map(([argument, stats]) => ({ argument, ...stats }))
+    .sort((a, b) => b.tradeCount - a.tradeCount || b.totalPnl - a.totalPnl);
+}
+
+function getArgumentCombinationStats(tradeFacts: ArchivedTradeFact[]) {
+  const groups = new Map<string, number>();
+
+  for (const item of tradeFacts) {
+    const label = getScenarioArguments(item.plan).sort((a, b) => a.localeCompare(b, "ru")).join(" + ");
+    if (!label) continue;
+    groups.set(label, (groups.get(label) ?? 0) + (Number(item.trade.actualResult) || 0));
+  }
+
+  return [...groups.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
 }
 
 export function calculatePermission({
@@ -662,34 +710,76 @@ export function calculateScenarioTradeMath(item: SessionPlan) {
   return { stopDistance, takeDistance, lot, potential, rr, hasData };
 }
 
-export function validateScenarioPlan(item: SessionPlan): ScenarioValidation {
+type ScenarioValidationOptions = {
+  minimumRr?: number;
+  remainingDailyRisk?: number;
+  personalMaxRiskPerTrade?: number;
+};
+
+export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidationOptions = {}): ScenarioValidation {
   const reasons: string[] = [];
   const math = calculateScenarioTradeMath(item);
+  const minimumRr = options.minimumRr ?? MIN_SCENARIO_RR;
+  const tradeRisk = Number(item.tradeRisk) || 0;
+  const scenarioArguments = getScenarioArguments(item);
+  const entryMethod = getPlanEntryMethod(item);
+  const entryMethodAllowed = Boolean(entryMethod && DEFAULT_ENTRY_METHODS.includes(entryMethod));
+  const hasTradeArgument = getPlanArgumentNames(item).length > 0;
+  const rrValid = math.rr >= minimumRr;
+  const riskValid =
+    tradeRisk > 0 &&
+    math.lot > 0 &&
+    math.stopDistance > 0 &&
+    math.takeDistance > 0 &&
+    (options.remainingDailyRisk === undefined || tradeRisk <= options.remainingDailyRisk) &&
+    (options.personalMaxRiskPerTrade === undefined || options.personalMaxRiskPerTrade <= 0 || tradeRisk <= options.personalMaxRiskPerTrade);
 
   if (!item.symbol) reasons.push("не выбран инструмент");
   if (!item.direction) reasons.push("не выбрано направление");
-  const argumentCount = getPlanArgumentNames(item).length;
-  if (argumentCount === 0) reasons.push("не выбран аргумент для сделки");
-  if (argumentCount > 5) reasons.push("выбрано больше 5 аргументов для сделки");
+  if (!hasTradeArgument) reasons.push("не выбран торговый аргумент");
+  if (scenarioArguments.length < 2) {
+    reasons.push("Недостаточно аргументов для сценария");
+    reasons.push("Минимум 2 аргумента required");
+  }
   if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнена точка входа");
-  if (!getPlanEntryMethod(item)) reasons.push("не выбран способ входа");
+  if (!entryMethod) reasons.push("не выбран способ входа");
+  if (entryMethod && !entryMethodAllowed) reasons.push("выбери способ входа из списка: отбой, ретест, ложный пробой или пробой");
   if (!item.stop || !item.tradeStop) reasons.push("не заполнен технический стоп");
   if (!item.take || !item.tradeTake) reasons.push("не заполнен технический тейк");
-  if ((Number(item.tradeRisk) || 0) <= 0) reasons.push("риск на сделку не задан");
+  if (tradeRisk <= 0) reasons.push("риск на сделку не задан");
   if ((Number(item.tradePointValue) || 0) <= 0) reasons.push("стоимость пункта не задана");
+  if (math.stopDistance <= 0 && math.hasData) reasons.push("дистанция до стопа должна быть больше 0");
+  if (math.takeDistance <= 0 && math.hasData) reasons.push("дистанция до тейка должна быть больше 0");
   if (math.lot <= 0 && math.hasData) reasons.push("лотность не рассчитана");
   if (math.rr <= 0 && math.hasData) reasons.push("RR не рассчитан");
+  if (math.rr > 0 && !rrValid) reasons.push(`RR ниже минимального ${minimumRr.toFixed(1)}`);
+  if (options.remainingDailyRisk !== undefined && tradeRisk > options.remainingDailyRisk) reasons.push("риск сделки превышает остаток дневного риск-бюджета");
+  if (options.personalMaxRiskPerTrade !== undefined && options.personalMaxRiskPerTrade > 0 && tradeRisk > options.personalMaxRiskPerTrade) {
+    reasons.push("риск сделки превышает личный максимум на сделку");
+  }
 
   return {
-    valid: reasons.length === 0 && math.lot > 0 && math.rr > 0,
+    valid: reasons.length === 0 && riskValid && rrValid && scenarioArguments.length >= 2 && hasTradeArgument && entryMethodAllowed,
     reasons: [...new Set(reasons)],
     math,
+    argumentCount: scenarioArguments.length,
+    riskValid,
+    rrValid,
   };
 }
 
-export function getBestValidScenario(plans: SessionPlan[]) {
+export function getBestValidScenario(
+  plans: SessionPlan[],
+  options: ScenarioValidationOptions & { getRemainingDailyRiskForPlan?: (plan: SessionPlan) => number } = {}
+) {
   return plans
-    .map((plan) => ({ plan, validation: validateScenarioPlan(plan) }))
+    .map((plan) => ({
+      plan,
+      validation: validateScenarioPlan(plan, {
+        ...options,
+        remainingDailyRisk: options.getRemainingDailyRiskForPlan ? options.getRemainingDailyRiskForPlan(plan) : options.remainingDailyRisk,
+      }),
+    }))
     .filter((item) => item.validation.valid)
     .sort((a, b) => b.validation.math.rr - a.validation.math.rr || Number(b.plan.tradeRisk) - Number(a.plan.tradeRisk))[0];
 }
