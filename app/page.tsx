@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard";
 import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
-import { ArchiveCard } from "@/components/trade-gate/ArchiveCard";
+import { ArchiveDayGroup } from "@/components/trade-gate/ArchiveDayGroup";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
 import { HeroStatus, LoadingHero } from "@/components/trade-gate/HeroStatus";
@@ -167,6 +167,22 @@ export default function TradeGateApp() {
   const todayMetrics = useTodayMetrics(activePlanDate, sessionPlans, archivedPlans, dailyRiskBudgets, accountSettings);
   const activeDailyRiskBudget = todayMetrics.dailyRiskBudget;
   const archivedPlansForDate = useMemo(() => archivedPlans.filter((item) => item.planDate === activePlanDate), [archivedPlans, activePlanDate]);
+  const archivedDayGroups = useMemo(() => {
+    const groups = new Map<string, ArchivedPlan[]>();
+
+    for (const item of archivedPlans) {
+      const group = groups.get(item.planDate) ?? [];
+      group.push(item);
+      groups.set(item.planDate, group);
+    }
+
+    return [...groups.entries()]
+      .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
+      .map(([planDate, plans]) => ({
+        planDate,
+        plans: [...plans].sort((a, b) => (Date.parse(b.archivedAt) || 0) - (Date.parse(a.archivedAt) || 0)),
+      }));
+  }, [archivedPlans]);
   const hasArchivedClosedDay = archivedPlansForDate.length > 0;
   const storedTradingDayStatusByDate = useMemo(
     () => mergeTradingDayStatuses(tradingDayStatuses, tradingDayStatusByDate),
@@ -674,15 +690,25 @@ export default function TradeGateApp() {
 
             <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
               <CardContent className="space-y-4 p-5">
-                <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив торговых планов" />
-                {archivedPlans.length === 0 ? (
+                <div>
+                  <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="Архив сценариев" />
+                  <div className="mt-2 text-sm text-neutral-500">
+                    Визуальная память торговых идей: день, сценарий, график, аргументы и фактические исполнения.
+                  </div>
+                </div>
+                {archivedDayGroups.length === 0 ? (
                   <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-500">
                     Архив пока пуст. Сценарии попадут сюда после кнопки “Закрыть торговый день”.
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {archivedPlans.map((item: ArchivedPlan) => (
-                      <ArchiveCard key={item.id} item={item} onRestore={(id) => dispatchPlanning({ type: "restore-plan", id })} />
+                  <div className="space-y-5">
+                    {archivedDayGroups.map((group) => (
+                      <ArchiveDayGroup
+                        key={group.planDate}
+                        planDate={group.planDate}
+                        plans={group.plans}
+                        onRestore={(id) => dispatchPlanning({ type: "restore-plan", id })}
+                      />
                     ))}
                   </div>
                 )}
