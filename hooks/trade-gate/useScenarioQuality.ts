@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { calculateScenarioTradeMath, getPlanArgumentNames, getPlanEntryMethod, getScenarioArguments } from "@/components/trade-gate/utils";
+import { MIN_SCENARIO_RR } from "@/constants/trade-gate";
+import { calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments } from "@/components/trade-gate/utils";
 import type { QualityScore, SessionPlan } from "@/types/trade-gate";
 
 type ScenarioQualityInput = {
@@ -27,16 +28,15 @@ export function calculateScenarioQuality(scenario: SessionPlan, hasChartImage = 
     }
   };
 
-  add(getPlanArgumentNames(scenario).length > 0, 15, "есть аргумент для сделки", "нет аргумента для сделки");
   add(scenarioArguments.length >= 2, 15, "есть минимум 2 аргумента сценария", "нужно минимум 2 аргумента сценария");
-  add(Boolean(getPlanEntryMethod(scenario)), 15, "выбран способ входа", "не выбран способ входа");
-  add(Boolean(scenario.direction), 8, "направление задано", "не выбрано направление");
-  add(Boolean(scenario.entryZone.trim()), 10, "зона входа задана", "не заполнена зона входа");
+  add(Boolean(getPlanEntryMethod(scenario)), 18, "выбран способ входа", "не выбран способ входа");
+  add(Boolean(scenario.direction), 10, "направление задано", "не выбрано направление");
+  add(Boolean(scenario.entryZone.trim() && scenario.tradeEntry.trim()), 14, "триггер входа задан", "не заполнен триггер входа");
   add(Boolean(scenario.scenarioInvalidation.trim()), 10, "инвалидация понятна", "не заполнена инвалидация сценария");
-  add(Boolean(scenario.stop.trim() && scenario.tradeStop.trim()), 10, "стоп определён", "не заполнен технический стоп");
-  add(Boolean(scenario.take.trim() && scenario.tradeTake.trim()), 10, "тейк определён", "не заполнен технический тейк");
-  add(Number(scenario.tradeRisk) > 0, 8, "риск задан", "риск на сделку не задан");
-  add(math.rr >= 1.5, 10, "RR выше 1:1.5", "RR ниже 1:1.5 или не рассчитан");
+  add(Boolean(scenario.stop.trim() && scenario.tradeStop.trim()), 12, "стоп определён", "не заполнен технический стоп");
+  add(Boolean(scenario.take.trim() && scenario.tradeTake.trim()), 12, "тейк определён", "не заполнен технический тейк");
+  add(Number(scenario.tradeRisk) > 0, 10, "риск задан", "риск на сделку не задан");
+  add(math.rr >= MIN_SCENARIO_RR, 14, "RR не хуже 1:3", "отношение риск/прибыль хуже чем 1:3");
   add(hasChartImage, 7, "график прикреплён", "график не прикреплён");
   add(Number(scenario.scenarioConfidence) > 0, 5, "уверенность оценена", "уверенность не оценена");
 

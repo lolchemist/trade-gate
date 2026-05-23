@@ -6,7 +6,7 @@ export const LOSS_LIMIT = -1000;
 
 export const DEFAULT_DAILY_RISK_BUDGET = "1000";
 
-export const MIN_SCENARIO_RR = 1.5;
+export const MIN_SCENARIO_RR = 3;
 
 export const DEFAULT_PERSONAL_MAX_RISK_PER_TRADE = "500";
 

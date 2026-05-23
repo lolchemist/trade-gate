@@ -730,7 +730,6 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   const scenarioArguments = getScenarioArguments(item);
   const entryMethod = getPlanEntryMethod(item);
   const entryMethodAllowed = Boolean(entryMethod && DEFAULT_ENTRY_METHODS.includes(entryMethod));
-  const hasTradeArgument = getPlanArgumentNames(item).length > 0;
   const rrValid = math.rr >= minimumRr;
   const riskValid =
     tradeRisk > 0 &&
@@ -742,7 +741,6 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
 
   if (!item.symbol) reasons.push("не выбран инструмент");
   if (!item.direction) reasons.push("не выбрано направление");
-  if (!hasTradeArgument) reasons.push("не выбран торговый аргумент");
   if (scenarioArguments.length === 0) {
     reasons.push("Добавь минимум 2 аргумента");
   }
@@ -750,7 +748,7 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
     reasons.push("Недостаточно аргументов для сценария");
     reasons.push("Минимум 2 аргумента required");
   }
-  if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнена точка входа");
+  if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнен триггер входа");
   if (!entryMethod) reasons.push("не выбран способ входа");
   if (entryMethod && !entryMethodAllowed) reasons.push("выбери способ входа из списка: отбой, ретест, ложный пробой или пробой");
   if (!item.stop || !item.tradeStop) reasons.push("не заполнен технический стоп");
@@ -761,14 +759,14 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   if (math.takeDistance <= 0 && math.hasData) reasons.push("дистанция до тейка должна быть больше 0");
   if (math.lot <= 0 && math.hasData) reasons.push("лотность не рассчитана");
   if (math.rr <= 0 && math.hasData) reasons.push("RR не рассчитан");
-  if (math.rr > 0 && !rrValid) reasons.push(`RR ниже минимального ${minimumRr.toFixed(1)}`);
+  if (math.rr > 0 && !rrValid) reasons.push("отношение риск/прибыль хуже чем 1:3");
   if (options.remainingDailyRisk !== undefined && tradeRisk > options.remainingDailyRisk) reasons.push("риск сделки превышает остаток дневного риск-бюджета");
   if (options.personalMaxRiskPerTrade !== undefined && options.personalMaxRiskPerTrade > 0 && tradeRisk > options.personalMaxRiskPerTrade) {
     reasons.push("риск сделки превышает личный максимум на сделку");
   }
 
   return {
-    valid: reasons.length === 0 && riskValid && rrValid && scenarioArguments.length >= 2 && hasTradeArgument && entryMethodAllowed,
+    valid: reasons.length === 0 && riskValid && rrValid && scenarioArguments.length >= 2 && entryMethodAllowed,
     reasons: [...new Set(reasons)],
     math,
     argumentCount: scenarioArguments.length,

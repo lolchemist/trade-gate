@@ -6,10 +6,9 @@ import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { ArgumentSelector } from "./ArgumentSelector";
 import { EntryMethodSelector } from "./EntryMethodSelector";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
-import { SetupSelector } from "./SetupSelector";
 import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
-import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
+import { calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -84,7 +83,6 @@ export function ScenarioCard({
   const diagnostic = useScenarioDiagnostic(item, hasChartImage);
   const { validation, quality } = diagnostic;
   const stale = item.carryCount >= 5;
-  const argumentLabel = getPlanArgumentLabel(item);
   const scenarioArguments = getScenarioArguments(item);
   const entryMethod = getPlanEntryMethod(item);
   const closed = item.status === "closed";
@@ -98,7 +96,6 @@ export function ScenarioCard({
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill tone={ready ? "emerald" : "amber"}>{ready ? "Готов" : "Черновик"}</StatusPill>
               <StatusPill tone={lifecycleTone(item.status)}>{lifecycleLabel(item.status)}</StatusPill>
-              <StatusPill>{argumentLabel}</StatusPill>
               {entryMethod && <StatusPill tone="cyan">{entryMethod}</StatusPill>}
               <StatusPill tone={item.direction === "long" ? "emerald" : item.direction === "short" ? "red" : "cyan"}>{directionLabel(item.direction)}</StatusPill>
               {item.carryCount > 0 && <StatusPill tone={stale ? "amber" : "neutral"}>Переносов: {item.carryCount}</StatusPill>}
@@ -107,7 +104,7 @@ export function ScenarioCard({
             <div className="mt-1 text-sm text-neutral-500">{item.entryZone || "Зона входа не заполнена"}</div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[460px]">
-            <ScenarioBadge label="RR" value={tradeMath.rr > 0 ? `1:${tradeMath.rr.toFixed(2)}` : "—"} tone={tradeMath.rr >= 1.5 ? "emerald" : tradeMath.rr > 0 ? "amber" : "neutral"} />
+            <ScenarioBadge label="RR" value={tradeMath.rr > 0 ? `1:${tradeMath.rr.toFixed(2)}` : "—"} tone={tradeMath.rr >= 3 ? "emerald" : tradeMath.rr > 0 ? "amber" : "neutral"} />
             <ScenarioBadge label="Арг." value={`${validation.argumentCount}/2`} tone={validation.argumentCount >= 2 ? "emerald" : "amber"} />
             <ScenarioBadge label="Риск ok" value={validation.riskValid ? "Да" : "Нет"} tone={validation.riskValid ? "emerald" : "amber"} />
             <ScenarioBadge label="RR ok" value={validation.rrValid ? "Да" : "Нет"} tone={validation.rrValid ? "emerald" : "amber"} />
@@ -142,8 +139,7 @@ export function ScenarioCard({
             </div>
           )}
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <SetupSelector item={item} tradeArguments={tradeArguments} onUpdate={onUpdate} />
+          <div className="grid gap-3 md:grid-cols-2">
             <SelectInput label="Направление" value={item.direction} setValue={(value) => onUpdate(item.id, "direction", value)} options={directionOptions} />
             <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(value) => onUpdate(item.id, "entryZone", value)} />
           </div>
