@@ -1,10 +1,10 @@
-import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_TRADE_ARGUMENTS } from "./constants";
+import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_TRADE_ARGUMENTS, ENTRY_TYPE_LABELS } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import type {
   ArchivedPlan,
   DailyRiskBudget,
   Direction,
-  EntryMethod,
+  EntryType,
   PermissionToTrade,
   RiskControlState,
   ScenarioTrade,
@@ -16,6 +16,7 @@ import type {
   TradeExecutionStatus,
   TradeExecutionType,
   WeeklyArgumentReport,
+  WeeklyEntryTypeReport,
   WeeklyReport,
 } from "./types";
 
@@ -103,10 +104,7 @@ export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_
     symbol: normalizedSymbol,
     direction: "long",
     entryZone: "",
-    entryMethodId: "",
-    entryMethodName: "",
-    entryMethod: "",
-    trigger: "",
+    entryType: undefined,
     stop: "",
     take: "",
     note: "",
@@ -249,8 +247,12 @@ export function getPlanArgumentLabel(plan: Pick<SessionPlan, "argumentIds" | "ar
   return names.length > 0 ? names.join(", ") : "Аргумент не выбран";
 }
 
-export function getPlanEntryMethod(plan: Pick<SessionPlan, "entryMethod" | "entryMethodName" | "trigger">) {
-  return plan.entryMethodName?.trim() || plan.entryMethod?.trim() || plan.trigger?.trim() || "";
+export function isEntryType(value: unknown): value is EntryType {
+  return typeof value === "string" && value in ENTRY_TYPE_LABELS;
+}
+
+export function getEntryTypeLabel(entryType?: EntryType | null) {
+  return entryType ? ENTRY_TYPE_LABELS[entryType] ?? "Способ не выбран" : "Способ не выбран";
 }
 
 export function createCustomTradeArgument({ name, description = "", defaultInstrument = "" }: { name: string; description?: string; defaultInstrument?: string }): TradeArgument {
@@ -267,30 +269,6 @@ export function createCustomTradeArgument({ name, description = "", defaultInstr
     name: name.trim(),
     description: description.trim(),
     defaultInstrument: defaultInstrument.trim().toUpperCase(),
-    isDefault: false,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-export function getActiveEntryMethods(entryMethods: EntryMethod[]) {
-  return entryMethods.filter((method) => method.isActive);
-}
-
-export function createCustomEntryMethod({ name, description = "" }: { name: string; description?: string }): EntryMethod {
-  const now = new Date().toISOString();
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9а-яё]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-
-  return {
-    id: `custom-entry-${slug || "method"}-${Date.now()}`,
-    name: name.trim(),
-    description: description.trim(),
     isDefault: false,
     isActive: true,
     createdAt: now,
@@ -426,8 +404,11 @@ export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanD
   const totalPnl = tradeFacts.reduce((total, item) => total + (Number(item.trade.actualResult) || 0), 0);
   const technicalTradeCount = tradeFacts.filter((item) => item.trade.technical === "yes").length;
   const argumentStats = getArgumentStats(tradeFacts);
+  const entryTypeStats = getEntryTypeStats(tradeFacts);
   const bestArgument = bestTradeGroupByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan));
   const worstArgument = worstTradeGroupByLabels(tradeFacts, (item) => getPlanArgumentNames(item.plan));
+  const bestEntryType = bestTradeGroup(tradeFacts, (item) => getEntryTypeLabel(item.plan.entryType));
+  const worstEntryType = worstTradeGroup(tradeFacts, (item) => getEntryTypeLabel(item.plan.entryType));
 
   return {
     weekStart,
@@ -441,6 +422,9 @@ export function calculateWeeklyReport(archivedPlans: ArchivedPlan[], activePlanD
     bestArgument,
     worstArgument,
     argumentStats,
+    bestEntryType,
+    worstEntryType,
+    entryTypeStats,
     stopCount: tradeFacts.filter((item) => item.trade.status === "stop").length,
     takeCount: tradeFacts.filter((item) => item.trade.status === "take").length,
     manualCloseCount: tradeFacts.filter((item) => item.trade.status === "manual_profit" || item.trade.status === "manual_loss" || item.trade.status === "breakeven").length,
@@ -482,6 +466,33 @@ function getArgumentStats(tradeFacts: ArchivedTradeFact[]): WeeklyArgumentReport
       tradeCount: stats.tradeCount,
       technicalTradePercentage: stats.tradeCount > 0 ? Math.round((stats.technicalCount / stats.tradeCount) * 100) : 0,
       averageRr: stats.rrCount > 0 ? Number((stats.rrTotal / stats.rrCount).toFixed(2)) : 0,
+      winrate: stats.tradeCount > 0 ? Math.round((stats.winCount / stats.tradeCount) * 100) : 0,
+    }))
+    .sort((a, b) => b.totalPnl - a.totalPnl);
+}
+
+function getEntryTypeStats(tradeFacts: ArchivedTradeFact[]): WeeklyEntryTypeReport[] {
+  const groups = new Map<string, { entryType: EntryType | "unknown"; totalPnl: number; tradeCount: number; technicalCount: number; winCount: number }>();
+
+  for (const item of tradeFacts) {
+    const entryType = item.plan.entryType && isEntryType(item.plan.entryType) ? item.plan.entryType : "unknown";
+    const label = entryType === "unknown" ? "Способ не выбран" : getEntryTypeLabel(entryType);
+    const result = Number(item.trade.actualResult) || 0;
+    const current = groups.get(label) ?? { entryType, totalPnl: 0, tradeCount: 0, technicalCount: 0, winCount: 0 };
+    current.totalPnl += result;
+    current.tradeCount += 1;
+    current.technicalCount += item.trade.technical === "yes" ? 1 : 0;
+    current.winCount += result > 0 ? 1 : 0;
+    groups.set(label, current);
+  }
+
+  return [...groups.entries()]
+    .map(([entryTypeLabel, stats]) => ({
+      entryType: stats.entryType,
+      entryTypeLabel,
+      totalPnl: stats.totalPnl,
+      tradeCount: stats.tradeCount,
+      technicalTradePercentage: stats.tradeCount > 0 ? Math.round((stats.technicalCount / stats.tradeCount) * 100) : 0,
       winrate: stats.tradeCount > 0 ? Math.round((stats.winCount / stats.tradeCount) * 100) : 0,
     }))
     .sort((a, b) => b.totalPnl - a.totalPnl);
@@ -658,7 +669,7 @@ export function validateScenarioPlan(item: SessionPlan): ScenarioValidation {
   if (argumentCount === 0) reasons.push("не выбран аргумент для сделки");
   if (argumentCount > 5) reasons.push("выбрано больше 5 аргументов для сделки");
   if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнена точка входа");
-  if (!getPlanEntryMethod(item)) reasons.push("не выбран способ входа");
+  if (!item.entryType) reasons.push("не выбран способ входа");
   if (!item.stop || !item.tradeStop) reasons.push("не заполнен технический стоп");
   if (!item.take || !item.tradeTake) reasons.push("не заполнен технический тейк");
   if ((Number(item.tradeRisk) || 0) <= 0) reasons.push("риск на сделку не задан");

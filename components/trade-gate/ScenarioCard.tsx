@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
-import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
+import { ENTRY_TYPE_OPTIONS, RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
-import { calculateScenarioTradeMath, getPlanArgumentLabel, getPlanArgumentNames, getPlanEntryMethod, isPlanReady } from "./utils";
+import { calculateScenarioTradeMath, getEntryTypeLabel, getPlanArgumentLabel, getPlanArgumentNames, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
   Direction,
   EditablePlanField,
   EditableTradeField,
-  EntryMethod,
   ResultStatus,
   ScenarioTrade,
   SelectOption,
@@ -50,7 +49,6 @@ export function ScenarioCard({
   item,
   index,
   tradeArguments,
-  entryMethods,
   onUpdate,
   onAddTrade,
   onUpdateTrade,
@@ -63,7 +61,6 @@ export function ScenarioCard({
   item: SessionPlan;
   index: number;
   tradeArguments: TradeArgument[];
-  entryMethods: EntryMethod[];
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
   onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
   onUpdateTrade: <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => void;
@@ -80,7 +77,7 @@ export function ScenarioCard({
   const quality = getQualityScore(item, tradeMath.rr, ready);
   const stale = item.carryCount >= 5;
   const argumentLabel = getPlanArgumentLabel(item);
-  const entryMethod = getPlanEntryMethod(item);
+  const entryTypeLabel = getEntryTypeLabel(item.entryType);
   const closed = item.status === "closed";
   const canClose = canCloseScenario(item);
 
@@ -93,8 +90,8 @@ export function ScenarioCard({
               <StatusPill tone={ready ? "emerald" : "amber"}>{ready ? "Готов" : "Черновик"}</StatusPill>
               <StatusPill tone={lifecycleTone(item.status)}>{lifecycleLabel(item.status)}</StatusPill>
               <StatusPill>{argumentLabel}</StatusPill>
+              {item.entryType && <StatusPill tone="cyan">{entryTypeLabel}</StatusPill>}
               <StatusPill tone={item.direction === "long" ? "emerald" : item.direction === "short" ? "red" : "cyan"}>{directionLabel(item.direction)}</StatusPill>
-              {entryMethod && <StatusPill tone="neutral">{entryMethod}</StatusPill>}
               {item.carryCount > 0 && <StatusPill tone={stale ? "amber" : "neutral"}>Переносов: {item.carryCount}</StatusPill>}
             </div>
             <div className="mt-3 text-lg font-semibold text-neutral-100">Сценарий {index + 1}</div>
@@ -132,8 +129,7 @@ export function ScenarioCard({
             <TextInput label="Зона / точка входа" value={item.entryZone} setValue={(value) => onUpdate(item.id, "entryZone", value)} />
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <EntryMethodPicker item={item} entryMethods={entryMethods} onUpdate={onUpdate} />
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
             <TextInput label="Стоп" value={item.stop} setValue={(value) => onUpdate(item.id, "stop", value)} />
             <TextInput label="Тейк" value={item.take} setValue={(value) => onUpdate(item.id, "take", value)} />
           </div>
@@ -146,6 +142,8 @@ export function ScenarioCard({
               </div>
               <StatusPill tone={tradeMath.hasData ? "emerald" : "neutral"}>{tradeMath.hasData ? "Расчёт готов" : "Нет расчёта"}</StatusPill>
             </div>
+
+            <EntryTypeSelector item={item} onUpdate={onUpdate} />
 
             <div className="grid gap-3 md:grid-cols-5">
               <NumberInput label="Плановый вход" value={item.tradeEntry} setValue={(value) => onUpdate(item.id, "tradeEntry", value)} />
@@ -434,65 +432,38 @@ function TradeArgumentMultiSelect({
   );
 }
 
-function EntryMethodPicker({
+function EntryTypeSelector({
   item,
-  entryMethods,
   onUpdate,
 }: {
   item: SessionPlan;
-  entryMethods: EntryMethod[];
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
 }) {
-  const current = getPlanEntryMethod(item);
-  const [query, setQuery] = useState(current);
-  useEffect(() => {
-    setQuery(current);
-  }, [current]);
-  const activeMethods = entryMethods.filter((method) => method.isActive);
-  const filteredMethods = activeMethods.filter((method) => method.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6);
-
-  const selectMethod = (method: EntryMethod) => {
-    onUpdate(item.id, "entryMethodId", method.id);
-    setQuery(method.name);
-  };
-
-  const useCustomMethod = () => {
-    const value = query.trim();
-    if (!value) return;
-    onUpdate(item.id, "entryMethod", value);
-  };
-
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Способ входа</div>
-      {current ? (
-        <span className="mb-2 inline-flex items-center gap-2 rounded-full border border-sky-200/20 bg-sky-200/[0.07] px-3 py-1.5 text-xs text-sky-100">
-          {current}
-          <button type="button" onClick={() => onUpdate(item.id, "entryMethod", "")} className="rounded-full text-sky-100/70 transition hover:text-sky-50" aria-label="Очистить способ входа">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </span>
-      ) : (
-        <span className="mb-2 inline-flex rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1.5 text-xs text-amber-100">Не выбран</span>
-      )}
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        onBlur={useCustomMethod}
-        placeholder="Найти или вписать способ"
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:ring-2 focus:ring-emerald-400/30"
-      />
-      <div className="mt-2 flex flex-wrap gap-2">
-        {filteredMethods.map((method) => (
-          <button key={method.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => selectMethod(method)} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-sky-200/20 hover:bg-sky-200/[0.07] hover:text-sky-100">
-            {method.name}
-          </button>
-        ))}
-        {query.trim() && !activeMethods.some((method) => method.name.toLowerCase() === query.trim().toLowerCase()) && (
-          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={useCustomMethod} className="rounded-full border border-emerald-200/20 bg-emerald-200/[0.07] px-3 py-1.5 text-xs text-emerald-100 transition hover:bg-emerald-200/[0.1]">
-            Использовать “{query.trim()}”
-          </button>
-        )}
+    <div className="mb-4 rounded-2xl border border-white/10 bg-black/25 p-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Способ входа</div>
+        {!item.entryType && <span className="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-3 py-1 text-xs text-amber-100">не выбран способ входа</span>}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-4">
+        {ENTRY_TYPE_OPTIONS.map((option) => {
+          const active = item.entryType === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onUpdate(item.id, "entryType", option.value)}
+              className={`min-h-11 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+                active
+                  ? "border-emerald-200/30 bg-emerald-200/[0.12] text-emerald-50 shadow-lg shadow-emerald-950/25"
+                  : "border-white/[0.08] bg-white/[0.035] text-neutral-300 hover:border-emerald-200/20 hover:bg-emerald-200/[0.06] hover:text-emerald-100"
+              }`}
+              aria-pressed={active}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -637,7 +608,7 @@ function canCloseScenario(item: SessionPlan) {
 function getQualityScore(item: SessionPlan, rr: number, ready: boolean) {
   let score = ready ? 45 : 10;
   if (getPlanArgumentNames(item).length > 0) score += 10;
-  if (getPlanEntryMethod(item)) score += 5;
+  if (item.entryType) score += 5;
   if (rr >= 1.5) score += 20;
   if (Number(item.tradeRisk) > 0) score += 10;
   if (item.note.trim().length > 10) score += 10;

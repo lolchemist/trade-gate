@@ -2,14 +2,13 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey } from "./utils";
-import type { CarryScenarioMode, EditablePlanField, EditableTradeField, EntryMethod, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, TradeArgument, TradeExecutionType } from "./types";
+import type { CarryScenarioMode, EditablePlanField, EditableTradeField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, TradeArgument, TradeExecutionType } from "./types";
 
 export function InstrumentPlan({
   idea,
   activePlanDate,
   plans,
   tradeArguments,
-  entryMethods,
   instrumentImages,
   marketIdeaNotes,
   onAddScenario,
@@ -29,7 +28,6 @@ export function InstrumentPlan({
   activePlanDate: string;
   plans: SessionPlan[];
   tradeArguments: TradeArgument[];
-  entryMethods: EntryMethod[];
   instrumentImages: PersistedImages;
   marketIdeaNotes: MarketIdeaNotes;
   onAddScenario: (symbol: string) => void;
@@ -139,7 +137,6 @@ export function InstrumentPlan({
               item={item}
               index={index}
               tradeArguments={tradeArguments}
-              entryMethods={entryMethods}
               onUpdate={onUpdatePlan}
               onAddTrade={onAddTrade}
               onUpdateTrade={onUpdateTrade}

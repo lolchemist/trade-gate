@@ -9,7 +9,6 @@ import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard
 import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
-import { EntryMethodPlaybookCard } from "@/components/trade-gate/EntryMethodPlaybookCard";
 import { HeroStatus, LoadingHero } from "@/components/trade-gate/HeroStatus";
 import { InstrumentCard } from "@/components/trade-gate/InstrumentCard";
 import { LockOverlay } from "@/components/trade-gate/LockOverlay";
@@ -32,13 +31,13 @@ import { useWeeklyReport } from "@/hooks/trade-gate/useWeeklyReport";
 import {
   formatPlanDate,
   formatSyncStatus,
+  getEntryTypeLabel,
   getDateISO,
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
   getNextDateISO,
   getPlanArgumentLabel,
-  getPlanEntryMethod,
   getRiskControlsForDate,
   getExecutedScenarioTrades,
   getScenarioActualRr,
@@ -104,7 +103,6 @@ export default function TradeGateApp() {
 
   const {
     tradeArguments,
-    entryMethods,
     sessionPlans,
     archivedPlans,
     instrumentImages,
@@ -577,7 +575,6 @@ export default function TradeGateApp() {
                       activePlanDate={activePlanDate}
                       plans={sessionPlans.filter((item) => item.planDate === activePlanDate && item.symbol === idea.symbol)}
                       tradeArguments={tradeArguments}
-                      entryMethods={entryMethods}
                       instrumentImages={instrumentImages as PersistedImages}
                       marketIdeaNotes={marketIdeaNotes as MarketIdeaNotes}
                       onAddScenario={(symbol) => {
@@ -667,7 +664,7 @@ export default function TradeGateApp() {
 
                         <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
                           <ArchiveField title="Аргументы" value={getPlanArgumentLabel(item)} />
-                          <ArchiveField title="Способ входа" value={getPlanEntryMethod(item) || "—"} />
+                          <ArchiveField title="Способ входа" value={getEntryTypeLabel(item.entryType)} />
                           <ArchiveField title="Плановый R:R" value={(() => {
                             const entry = Number(item.tradeEntry);
                             const stop = Number(item.tradeStop);
@@ -685,7 +682,7 @@ export default function TradeGateApp() {
                           <ArchiveField title="Закрыта" value={item.closedAt || "—"} />
                         </div>
 
-                        <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                        <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
                           <ArchiveField title="Отмена сценария" value={item.note || "—"} />
                           <ArchiveField title="Комментарий закрытия" value={item.closeComment || "—"} />
                           <ArchiveField title="Ключ графика" value={item.chartImageKey || "—"} />
@@ -734,6 +731,7 @@ export default function TradeGateApp() {
               report={weeklyReport}
               byInstrument={analyticsStats.byInstrument}
               byArgument={analyticsStats.byArgument}
+              byEntryType={analyticsStats.byEntryType}
               mistakeCount={analyticsStats.mistakeCount}
               revengeNoteCount={analyticsStats.revengeNoteCount}
             />
@@ -763,13 +761,6 @@ export default function TradeGateApp() {
               onAdd={(name, description, defaultInstrument) => dispatchPlanning({ type: "add-trade-argument", name, description, defaultInstrument })}
               onUpdate={(id, changes) => dispatchPlanning({ type: "update-trade-argument", id, changes })}
               onDelete={(id) => dispatchPlanning({ type: "delete-trade-argument", id })}
-            />
-
-            <EntryMethodPlaybookCard
-              entryMethods={entryMethods}
-              onAdd={(name, description) => dispatchPlanning({ type: "add-entry-method", name, description })}
-              onUpdate={(id, changes) => dispatchPlanning({ type: "update-entry-method", id, changes })}
-              onDelete={(id) => dispatchPlanning({ type: "delete-entry-method", id })}
             />
 
             <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
@@ -838,7 +829,7 @@ export default function TradeGateApp() {
                         <span className="block text-sm font-semibold text-neutral-100">
                           {item.symbol} · {getPlanArgumentLabel(item)}
                         </span>
-                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || getPlanEntryMethod(item) || "Зона входа не заполнена"}</span>
+                        <span className="mt-1 block truncate text-xs text-neutral-500">{item.entryZone || getEntryTypeLabel(item.entryType)}</span>
                         {item.carryCount >= 5 && <span className="mt-2 block text-xs text-amber-100">Сценарий переносился несколько дней и может быть уже неактуален.</span>}
                       </span>
                     </label>

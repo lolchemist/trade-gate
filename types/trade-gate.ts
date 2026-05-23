@@ -23,6 +23,8 @@ export type TradeExecutionStatus = "planned" | "executed" | ResultStatus;
 
 export type ScenarioLifecycleStatus = "planned" | "active" | "closed" | "archived";
 
+export type EntryType = "bounce" | "breakout" | "false_breakout" | "retest";
+
 export type EditablePlanField = keyof SessionPlan;
 
 export type EditableTradeField = keyof ScenarioTrade;
@@ -60,11 +62,7 @@ export interface SessionPlan {
   symbol: string;
   direction: Direction;
   entryZone: string;
-  entryMethodId: string;
-  entryMethodName: string;
-  entryMethod: string;
-  /** Legacy field kept for old saved states. New logic uses entryMethod. */
-  trigger: string;
+  entryType?: EntryType;
   stop: string;
   take: string;
   note: string;
@@ -126,16 +124,6 @@ export interface TradeArgument {
   updatedAt: string;
 }
 
-export interface EntryMethod {
-  id: string;
-  name: string;
-  description?: string;
-  isDefault: boolean;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface DailyRiskBudget {
   planDate: string;
   budgetUsd: string;
@@ -182,6 +170,9 @@ export interface WeeklyReport {
   bestArgument: string;
   worstArgument: string;
   argumentStats: WeeklyArgumentReport[];
+  bestEntryType: string;
+  worstEntryType: string;
+  entryTypeStats: WeeklyEntryTypeReport[];
   stopCount: number;
   takeCount: number;
   manualCloseCount: number;
@@ -194,6 +185,15 @@ export interface WeeklyArgumentReport {
   tradeCount: number;
   technicalTradePercentage: number;
   averageRr: number;
+  winrate: number;
+}
+
+export interface WeeklyEntryTypeReport {
+  entryType: EntryType | "unknown";
+  entryTypeLabel: string;
+  totalPnl: number;
+  tradeCount: number;
+  technicalTradePercentage: number;
   winrate: number;
 }
 
@@ -240,7 +240,6 @@ export interface PlanningState {
   tradeArguments: TradeArgument[];
   /** Legacy alias kept for existing saved state compatibility. */
   setups: TradeArgument[];
-  entryMethods: EntryMethod[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
   instrumentImages: PersistedImages;
@@ -262,7 +261,6 @@ export interface CloudPayload {
   tradeArguments: TradeArgument[];
   /** Legacy alias kept for existing saved state compatibility. */
   setups: TradeArgument[];
-  entryMethods: EntryMethod[];
   sessionPlans: SessionPlan[];
   archivedPlans: ArchivedPlan[];
   instrumentImages: PersistedImages;

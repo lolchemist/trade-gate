@@ -9,12 +9,14 @@ export function AnalyticsDashboard({
   report,
   byInstrument,
   byArgument,
+  byEntryType,
   mistakeCount,
   revengeNoteCount,
 }: {
   report: WeeklyReport;
   byInstrument: AnalyticsRow[];
   byArgument: AnalyticsRow[];
+  byEntryType: AnalyticsRow[];
   mistakeCount: number;
   revengeNoteCount: number;
 }) {
@@ -37,6 +39,11 @@ export function AnalyticsDashboard({
           <PanelHeader eyebrow="Тепловая карта" title="Финрезультат по аргументам" meta={<Activity className="h-5 w-5 text-neutral-500" />} />
           <Heatmap rows={byArgument} empty="Нет архивных сделок по аргументам за выбранную неделю." />
         </TerminalPanel>
+
+        <TerminalPanel className="p-5" glow="amber">
+          <PanelHeader eyebrow="Метод исполнения" title="Финрезультат по способам входа" meta={<Activity className="h-5 w-5 text-neutral-500" />} />
+          <Heatmap rows={byEntryType} empty="Нет архивных сделок по способам входа за выбранную неделю." />
+        </TerminalPanel>
       </div>
 
       <TerminalPanel className="p-5" glow={report.stopCount > report.takeCount ? "red" : "neutral"}>
@@ -52,6 +59,8 @@ export function AnalyticsDashboard({
             <MetricTile label="Заметки отбиться" value={String(revengeNoteCount)} tone={revengeNoteCount > 0 ? "red" : "neutral"} />
             <MetricTile label="Лучший аргумент" value={report.bestArgument} tone="emerald" />
             <MetricTile label="Худший аргумент" value={report.worstArgument} tone="red" />
+            <MetricTile label="Лучший вход" value={report.bestEntryType} tone="emerald" />
+            <MetricTile label="Худший вход" value={report.worstEntryType} tone="red" />
           </div>
         </div>
       </TerminalPanel>

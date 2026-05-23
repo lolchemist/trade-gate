@@ -1,4 +1,4 @@
-import type { AccountSettings, EntryMethod, MarketIdea, ResultStatus, TechnicalStatus, TradeArgument } from "@/types/trade-gate";
+import type { AccountSettings, EntryType, MarketIdea, ResultStatus, TechnicalStatus, TradeArgument } from "@/types/trade-gate";
 import { DEFAULT_INSTRUMENT_SYMBOL } from "./instrumentDefaults";
 
 export const STORAGE_KEY = "trade-gate-state-v1";
@@ -8,6 +8,18 @@ export const LOSS_LIMIT = -1000;
 export const DEFAULT_DAILY_RISK_BUDGET = "1000";
 
 export const MAX_INSTRUMENT_IMAGE_BYTES = 750_000;
+
+export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
+  bounce: "Отбой",
+  breakout: "Пробой",
+  false_breakout: "Ложный пробой",
+  retest: "Ретест",
+};
+
+export const ENTRY_TYPE_OPTIONS = Object.entries(ENTRY_TYPE_LABELS).map(([value, label]) => ({
+  value: value as EntryType,
+  label,
+}));
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   accountSize: "100000",
@@ -202,31 +214,6 @@ export const DEFAULT_TRADE_ARGUMENTS: TradeArgument[] = [
     updatedAt: DEFAULT_ARGUMENT_DATE,
   },
 ];
-
-export const DEFAULT_ENTRY_METHODS: EntryMethod[] = [
-  "Retest",
-  "Breakout",
-  "False breakout",
-  "Pullback",
-  "Momentum continuation",
-  "Liquidity sweep",
-  "Volume confirmation",
-  "News reaction",
-  "Level rejection",
-  "Wolfe wave entry",
-  "Manual confirmation",
-].map((name) => ({
-  id: name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, ""),
-  name,
-  description: "",
-  isDefault: true,
-  isActive: true,
-  createdAt: DEFAULT_ARGUMENT_DATE,
-  updatedAt: DEFAULT_ARGUMENT_DATE,
-}));
 
 export const MARKET_IDEAS: MarketIdea[] = [
   {
