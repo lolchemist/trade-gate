@@ -252,6 +252,7 @@ export default function TradeGateApp() {
     sessionPlansForDate: activePlansForDate,
     personalDailyStopHit,
     personalMaxRiskPerTrade,
+    plannedRiskUsed,
     dailyRiskRemaining,
     propDailyLossClose,
     propDailyLossHit: todayMetrics.propDailyLossHit,
@@ -508,7 +509,9 @@ export default function TradeGateApp() {
                     <RiskBudgetCard
                       budgetUsd={activeDailyRiskBudget.budgetUsd}
                       plannedRiskUsed={plannedRiskUsed}
+                      usedRisk={todayMetrics.riskUsedTotal}
                       realizedLossUsed={todayMetrics.realizedLossUsed}
+                      activeRiskExposureUsed={todayMetrics.activeRiskExposureUsed}
                       remainingRisk={dailyRiskRemaining}
                       isClosedDay={isTradingDayClosed}
                       onBudgetChange={(value) => dispatchPlanning({ type: "set-daily-risk-budget", planDate: activePlanDate, budgetUsd: value })}

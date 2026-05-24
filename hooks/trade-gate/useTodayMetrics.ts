@@ -27,7 +27,7 @@ function calculateTodayMetrics(
   const activePlansForDate = sessionPlans.filter((plan) => plan.planDate === activePlanDate);
   const archivedForDate = archivedPlans.filter((plan) => plan.planDate === activePlanDate);
   const closedPlansForDate = activePlansForDate.filter(isScenarioClosed);
-  const activeExecutedTrades = closedPlansForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, archivedAt: trade.executedAt || plan.closedAt || "", planId: plan.id })));
+  const activeExecutedTrades = activePlansForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, archivedAt: trade.executedAt || plan.closedAt || "", planId: plan.id })));
   const archivedExecutedTrades = archivedForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, archivedAt: trade.executedAt || plan.archivedAt, planId: plan.id })));
   const executedTrades = [...activeExecutedTrades, ...archivedExecutedTrades].filter((item) => executedStatuses.has(item.trade.status));
   const dailyRiskBudget = getDailyRiskBudget(dailyRiskBudgets, activePlanDate);
@@ -38,7 +38,11 @@ function calculateTodayMetrics(
     const result = Number(item.trade.actualResult) || 0;
     return result < 0 ? total + Math.abs(result) : total;
   }, 0);
-  const riskUsedTotal = plannedRiskUsed + realizedLossUsed;
+  const activeRiskExposureUsed = activeExecutedTrades.reduce((total, item) => {
+    if (item.trade.status !== "executed") return total;
+    return total + Math.max(0, Number(item.trade.actualRisk) || 0);
+  }, 0);
+  const riskUsedTotal = realizedLossUsed + activeRiskExposureUsed;
   const remainingRisk = budget - riskUsedTotal;
   const personalDailyStop = Number(accountSettings.personalDailyStop) || 0;
   const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;
@@ -51,6 +55,7 @@ function calculateTodayMetrics(
     dailyRiskBudget,
     activeScenarioCount: activePlansForDate.length,
     plannedRiskUsed,
+    activeRiskExposureUsed,
     realizedPnl,
     realizedLossUsed,
     riskUsedTotal,

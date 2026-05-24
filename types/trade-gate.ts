@@ -220,6 +220,7 @@ export interface TodayMetrics {
   dailyRiskBudget: DailyRiskBudget;
   activeScenarioCount: number;
   plannedRiskUsed: number;
+  activeRiskExposureUsed: number;
   realizedPnl: number;
   realizedLossUsed: number;
   riskUsedTotal: number;

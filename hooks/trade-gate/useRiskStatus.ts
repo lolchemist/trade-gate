@@ -20,6 +20,7 @@ type UseRiskStatusInput = {
   sessionPlansForDate: SessionPlan[];
   personalDailyStopHit: boolean;
   personalMaxRiskPerTrade: number;
+  plannedRiskUsed: number;
   dailyRiskRemaining: number;
   propDailyLossClose: boolean;
   propDailyLossHit: boolean;
@@ -43,6 +44,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
     sessionPlansForDate,
     personalDailyStopHit,
     personalMaxRiskPerTrade,
+    plannedRiskUsed,
     dailyRiskRemaining,
     propDailyLossClose,
     propDailyLossHit,
@@ -67,6 +69,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
         sessionPlansForDate,
         personalDailyStopHit,
         personalMaxRiskPerTrade,
+        plannedRiskUsed,
         dailyRiskRemaining,
         propDailyLossClose,
         propDailyLossHit,
@@ -88,6 +91,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
       sessionPlansForDate,
       personalDailyStopHit,
       personalMaxRiskPerTrade,
+      plannedRiskUsed,
       dailyRiskRemaining,
       propDailyLossClose,
       propDailyLossHit,
@@ -112,6 +116,7 @@ function calculateRiskStatus({
   sessionPlansForDate,
   personalDailyStopHit,
   personalMaxRiskPerTrade,
+  plannedRiskUsed,
   dailyRiskRemaining,
   propDailyLossClose,
   propDailyLossHit,
@@ -193,6 +198,10 @@ function calculateRiskStatus({
     riskScore += 50;
     readiness.discipline -= 50;
     reasons.push("Дневной риск-лимит достигнут");
+  } else if (plannedRiskUsed > dailyRiskRemaining) {
+    riskScore += 4;
+    readiness.discipline -= 10;
+    warnings.push("Запланированный риск превышает доступный дневной лимит");
   }
 
   if (propDailyLossHit) {

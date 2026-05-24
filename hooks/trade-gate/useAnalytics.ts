@@ -396,9 +396,8 @@ function buildRiskDiscipline(
   for (const [planDate, dayFacts] of factsByDate.entries()) {
     const budget = Number(dailyRiskBudgets[planDate]?.budgetUsd) || Number(DEFAULT_DAILY_RISK_BUDGET);
     const realizedLoss = Math.abs(sum(dayFacts.filter((fact) => fact.pnl < 0).map((fact) => fact.pnl)));
-    const plannedRisk = sum(archivedPlans.filter((plan) => plan.planDate === planDate).map((plan) => Number(plan.tradeRisk) || 0));
     const dayPnl = sum(dayFacts.map((fact) => fact.pnl));
-    const exceeded = realizedLoss + plannedRisk > budget;
+    const exceeded = realizedLoss > budget;
     if (exceeded) {
       riskBudgetExceededDays += 1;
       violatedDayPnl += dayPnl;
