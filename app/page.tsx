@@ -38,7 +38,7 @@ import {
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
-  getNextDateISO,
+  getNextTradingDateISO,
   getPlanEntryMethod,
   getPlanArgumentLabel,
   getRiskControlsForDate,
@@ -77,7 +77,7 @@ const carryModeOptions: { id: CarryScenarioMode; title: string; detail: string }
   {
     id: "scenario",
     title: "Только сценарий",
-    detail: "Перенести аргументы, уровни, способ входа и заметки. Расчёт сделки будет очищен.",
+    detail: "Перенести только выбранный сценарий: аргументы, уровни, способ входа и заметки. Расчёт сделки будет очищен.",
   },
   {
     id: "scenario_image",
@@ -86,8 +86,8 @@ const carryModeOptions: { id: CarryScenarioMode; title: string; detail: string }
   },
   {
     id: "scenario_trade_plan",
-    title: "Сценарий + торговый план",
-    detail: "Сохранить расчёт сделки, риск, стоимость пункта и причину входа.",
+    title: "Сценарий + расчёт сделки",
+    detail: "Сохранить плановый вход, стоп, тейк, риск, стоимость пункта и лотность только для этого сценария.",
   },
 ];
 
@@ -128,7 +128,7 @@ export default function TradeGateApp() {
   const activeRiskControls = getRiskControlsForDate(riskControlsByDate, activePlanDate);
   const { sleep, anxiety, urge, anger, dailyPnl, dailyLoss, tradesToday, consecutiveStops, plan, newsChecked, stopSet, revenge, lockUntil } = activeRiskControls;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
-  const nextPlanDate = getNextDateISO(activePlanDate);
+  const nextPlanDate = getNextTradingDateISO(activePlanDate);
   const nextPlanDateLabel = formatPlanDate(nextPlanDate);
   const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
   const chartImageByScenarioId = useMemo(
@@ -378,7 +378,7 @@ export default function TradeGateApp() {
   };
 
   const carryScenario = (id: number, mode: CarryScenarioMode) => {
-    const action: PlanningAction = { type: "carry-plan", id, nextPlanDate, mode };
+    const action: PlanningAction = { type: "carry-scenario", id, nextPlanDate, mode };
     dispatchPlanning(action);
     setSyncStatus(`Сценарий перенесён на ${nextPlanDateLabel}`);
   };
@@ -649,6 +649,7 @@ export default function TradeGateApp() {
                       onReopenPlan={reopenScenario}
                       onCarryPlan={carryScenario}
                       onRemovePlan={(id) => dispatchPlanning({ type: "remove-plan", id })}
+                      onSaveNow={saveNow}
                     />
                   ))}
                 </div>

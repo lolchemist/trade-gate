@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, ChevronDown, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronDown, CloudUpload, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
 import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
@@ -62,6 +62,7 @@ export function ScenarioCard({
   onReopen,
   onCarry,
   onRemove,
+  onSaveNow,
 }: {
   item: SessionPlan;
   index: number;
@@ -75,6 +76,7 @@ export function ScenarioCard({
   onReopen: (id: number) => void;
   onCarry: (id: number, mode: CarryScenarioMode) => void;
   onRemove: (id: number) => void;
+  onSaveNow: () => void | Promise<void>;
 }) {
   const ready = isPlanReady(item);
   const [open, setOpen] = useState(!ready);
@@ -148,18 +150,24 @@ export function ScenarioCard({
             <ArgumentSelector item={item} availableArguments={tradeArguments.map((argument) => argument.name)} selectedArguments={scenarioArguments} onUpdate={onUpdate} />
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <TextInput label="Стоп" value={item.stop} setValue={(value) => onUpdate(item.id, "stop", value)} />
-            <TextInput label="Тейк" value={item.take} setValue={(value) => onUpdate(item.id, "take", value)} />
-          </div>
-
           <div className="mt-4 rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">A. Планирование сценария</div>
                 <div className="mt-1 text-sm text-neutral-500">Гипотеза, плановый риск, технические уровни, лот и R:R.</div>
               </div>
-              <StatusPill tone={tradeMath.hasData ? "emerald" : "neutral"}>{tradeMath.hasData ? "Расчёт готов" : "Нет расчёта"}</StatusPill>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusPill tone={tradeMath.hasData ? "emerald" : "neutral"}>{tradeMath.hasData ? "Расчёт готов" : "Нет расчёта"}</StatusPill>
+                <Button
+                  type="button"
+                  onClick={() => void onSaveNow()}
+                  variant="outline"
+                  className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]"
+                >
+                  <CloudUpload className="mr-2 h-4 w-4" />
+                  Сохранить в облако
+                </Button>
+              </div>
             </div>
 
             <EntryMethodSelector item={item} onUpdate={onUpdate} />
@@ -299,17 +307,21 @@ export function ScenarioCard({
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button onClick={() => void onSaveNow()} variant="outline" className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]">
+              <CloudUpload className="mr-2 h-4 w-4" />
+              Сохранить
+            </Button>
             <div className="relative">
               <Button onClick={() => setCarryOpen((value) => !value)} variant="outline" className="rounded-xl border border-sky-200/20 bg-sky-200/[0.06] text-sky-100 hover:bg-sky-200/[0.1]">
                 <ArrowRight className="mr-2 h-4 w-4" />
-                Перенести
+                Перенести сценарий
               </Button>
               {carryOpen && (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-2xl border border-white/[0.08] bg-[#111317]/95 p-3 shadow-2xl shadow-black/35 backdrop-blur-xl">
-                  <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Перенос на завтра</div>
+                  <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Перенос этого сценария</div>
                   <CarryOptionButton
                     title="Только сценарий"
-                    detail="Аргументы, уровни, способ входа и заметки. Торговый расчёт будет очищен."
+                    detail="Аргументы, уровни, способ входа и заметки. Расчёт сделки будет очищен."
                     onClick={() => {
                       onCarry(item.id, "scenario");
                       setCarryOpen(false);
@@ -317,15 +329,15 @@ export function ScenarioCard({
                   />
                   <CarryOptionButton
                     title="Сценарий + график"
-                    detail="Дополнительно скопирует изображение инструмента на следующую дату."
+                    detail="Дополнительно скопирует график этого инструмента на следующую торговую дату."
                     onClick={() => {
                       onCarry(item.id, "scenario_image");
                       setCarryOpen(false);
                     }}
                   />
                   <CarryOptionButton
-                    title="Сценарий + торговый план"
-                    detail="Сохранит расчёт сделки, риск, лотность и способ входа."
+                    title="Сценарий + расчёт сделки"
+                    detail="Сохранит плановый вход, стоп, тейк, риск и лотность только для этого сценария."
                     onClick={() => {
                       onCarry(item.id, "scenario_trade_plan");
                       setCarryOpen(false);

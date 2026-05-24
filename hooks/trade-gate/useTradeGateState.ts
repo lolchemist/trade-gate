@@ -74,7 +74,7 @@ export type PlanningAction =
   | { type: "close-plan"; id: number }
   | { type: "reopen-plan"; id: number }
   | { type: "restore-plan"; id: number }
-  | { type: "carry-plan"; id: number; nextPlanDate: string; mode: CarryScenarioMode }
+  | { type: "carry-scenario"; id: number; nextPlanDate: string; mode: CarryScenarioMode }
   | { type: "set-instrument-image"; key: string; value: string }
   | { type: "remove-instrument-image"; key: string }
   | { type: "set-market-idea-note"; key: string; value: string }
@@ -213,8 +213,8 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         archivedPlans: state.archivedPlans.filter((plan) => plan.id !== action.id),
       };
     }
-    case "carry-plan":
-      return carryPlanToDate(state, action.id, action.nextPlanDate, action.mode);
+    case "carry-scenario":
+      return carryScenarioToDate(state, action.id, action.nextPlanDate, action.mode);
     case "set-instrument-image":
       return { ...state, instrumentImages: { ...state.instrumentImages, [action.key]: action.value } };
     case "remove-instrument-image": {
@@ -336,7 +336,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
       const carryIds = new Set(action.carryPlanIds ?? []);
       const carriedPlans = plansToArchive
         .filter((plan) => carryIds.has(plan.id))
-        .map((plan, index) => createCarriedPlan(plan, action.nextPlanDate, action.carryMode ?? "scenario_trade_plan", Date.now() + index + 1));
+        .map((plan, index) => createCarriedScenario(plan, action.nextPlanDate, action.carryMode ?? "scenario_trade_plan", Date.now() + index + 1));
       const nextDayAlreadyPrepared = remainingSessionPlans.some((plan) => plan.planDate === action.nextPlanDate) || carriedPlans.length > 0;
       const carriedSymbols = new Set(carriedPlans.map((plan) => plan.symbol));
 
@@ -360,12 +360,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         },
         emergencyNotes: { ...state.emergencyNotes, [action.nextPlanDate]: state.emergencyNotes[action.nextPlanDate] ?? "" },
         emergencyLock: { revenge: false, lockUntil: "" },
-        marketIdeaNotes: plansToArchive
-          .filter((plan) => carryIds.has(plan.id))
-          .reduce(
-          (notes, plan) => copyMarketIdeaNotes(notes, action.planDate, action.nextPlanDate, plan.symbol),
-          state.marketIdeaNotes
-        ),
+        marketIdeaNotes: state.marketIdeaNotes,
         instrumentImages:
           action.carryMode === "scenario_image"
             ? [...carriedSymbols].reduce((images, symbol) => copyInstrumentImage(images, action.planDate, action.nextPlanDate, symbol), state.instrumentImages)
@@ -474,22 +469,21 @@ function archiveScenarioForDay(plan: SessionPlan, state: PlanningState, planDate
   };
 }
 
-function carryPlanToDate(state: PlanningState, planId: number, nextPlanDate: string, mode: CarryScenarioMode): PlanningState {
-  const plan = state.sessionPlans.find((item) => item.id === planId);
-  if (!plan) return state;
+function carryScenarioToDate(state: PlanningState, scenarioId: number, nextPlanDate: string, mode: CarryScenarioMode): PlanningState {
+  const scenario = state.sessionPlans.find((item) => item.id === scenarioId);
+  if (!scenario) return state;
 
-  const carriedPlan = createCarriedPlan(plan, nextPlanDate, mode);
+  const carriedScenario = createCarriedScenario(scenario, nextPlanDate, mode);
 
   return {
     ...state,
-    sessionPlans: [carriedPlan, ...state.sessionPlans],
-    marketIdeaNotes: copyMarketIdeaNotes(state.marketIdeaNotes, plan.planDate, nextPlanDate, plan.symbol),
-    instrumentImages: mode === "scenario_image" ? copyInstrumentImage(state.instrumentImages, plan.planDate, nextPlanDate, plan.symbol) : state.instrumentImages,
+    sessionPlans: [carriedScenario, ...state.sessionPlans],
+    instrumentImages: mode === "scenario_image" ? copyInstrumentImage(state.instrumentImages, scenario.planDate, nextPlanDate, scenario.symbol) : state.instrumentImages,
     emergencyNotes: { ...state.emergencyNotes, [nextPlanDate]: "" },
   };
 }
 
-function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryScenarioMode, id = Date.now()): SessionPlan {
+function createCarriedScenario(plan: SessionPlan, nextPlanDate: string, mode: CarryScenarioMode, id = Date.now()): SessionPlan {
   const withTradePlan = mode === "scenario_trade_plan";
 
   return {
@@ -517,20 +511,6 @@ function createCarriedPlan(plan: SessionPlan, nextPlanDate: string, mode: CarryS
     tradeRisk: withTradePlan ? plan.tradeRisk : "",
     tradePointValue: withTradePlan ? plan.tradePointValue : getPointValuePerLot(plan.symbol),
   };
-}
-
-function copyMarketIdeaNotes(notes: PlanningState["marketIdeaNotes"], fromDate: string, toDate: string, symbol: string) {
-  const nextNotes = { ...notes };
-
-  for (const field of ["bias", "scenario"] as const) {
-    const fromKey = `${fromDate}:${symbol}:${field}`;
-    const toKey = `${toDate}:${symbol}:${field}`;
-    if (notes[fromKey] !== undefined && nextNotes[toKey] === undefined) {
-      nextNotes[toKey] = notes[fromKey];
-    }
-  }
-
-  return nextNotes;
 }
 
 function copyInstrumentImage(images: PlanningState["instrumentImages"], fromDate: string, toDate: string, symbol: string) {

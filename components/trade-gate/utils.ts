@@ -195,6 +195,16 @@ export function getNextDateISO(isoDate: string) {
   return getDateISO(date);
 }
 
+export function getNextTradingDateISO(isoDate: string) {
+  const date = new Date(`${isoDate}T12:00:00`);
+
+  do {
+    date.setDate(date.getDate() + 1);
+  } while (date.getDay() === 0 || date.getDay() === 6);
+
+  return getDateISO(date);
+}
+
 export function getWeekRange(isoDate: string) {
   const date = new Date(`${isoDate}T12:00:00`);
   const day = date.getDay() || 7;
@@ -751,8 +761,8 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнен триггер входа");
   if (!entryMethod) reasons.push("не выбран способ входа");
   if (entryMethod && !entryMethodAllowed) reasons.push("выбери способ входа из списка: отбой, ретест, ложный пробой или пробой");
-  if (!item.stop || !item.tradeStop) reasons.push("не заполнен технический стоп");
-  if (!item.take || !item.tradeTake) reasons.push("не заполнен технический тейк");
+  if (!item.tradeStop) reasons.push("не заполнен плановый стоп");
+  if (!item.tradeTake) reasons.push("не заполнен плановый тейк");
   if (tradeRisk <= 0) reasons.push("риск на сделку не задан");
   if ((Number(item.tradePointValue) || 0) <= 0) reasons.push("стоимость пункта не задана");
   if (math.stopDistance <= 0 && math.hasData) reasons.push("дистанция до стопа должна быть больше 0");

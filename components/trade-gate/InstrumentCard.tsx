@@ -30,6 +30,7 @@ export function InstrumentCard({
   onReopenPlan,
   onCarryPlan,
   onRemovePlan,
+  onSaveNow,
 }: {
   idea: MarketIdea;
   activePlanDate: string;
@@ -49,6 +50,7 @@ export function InstrumentCard({
   onReopenPlan: (id: number) => void;
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
+  onSaveNow: () => void | Promise<void>;
 }) {
   const accent = instrumentAccents[idea.symbol] ?? instrumentAccents["UKOIL.cash"];
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
@@ -168,6 +170,7 @@ export function InstrumentCard({
               onReopen={onReopenPlan}
               onCarry={onCarryPlan}
               onRemove={onRemovePlan}
+              onSaveNow={onSaveNow}
             />
           ))
         )}

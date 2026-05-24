@@ -33,8 +33,8 @@ export function calculateScenarioQuality(scenario: SessionPlan, hasChartImage = 
   add(Boolean(scenario.direction), 10, "направление задано", "не выбрано направление");
   add(Boolean(scenario.entryZone.trim() && scenario.tradeEntry.trim()), 14, "триггер входа задан", "не заполнен триггер входа");
   add(Boolean(scenario.scenarioInvalidation.trim()), 10, "инвалидация понятна", "не заполнена инвалидация сценария");
-  add(Boolean(scenario.stop.trim() && scenario.tradeStop.trim()), 12, "стоп определён", "не заполнен технический стоп");
-  add(Boolean(scenario.take.trim() && scenario.tradeTake.trim()), 12, "тейк определён", "не заполнен технический тейк");
+  add(Boolean(scenario.tradeStop.trim()), 12, "плановый стоп определён", "не заполнен плановый стоп");
+  add(Boolean(scenario.tradeTake.trim()), 12, "плановый тейк определён", "не заполнен плановый тейк");
   add(Number(scenario.tradeRisk) > 0, 10, "риск задан", "риск на сделку не задан");
   add(math.rr >= MIN_SCENARIO_RR, 14, "RR не хуже 1:3", "отношение риск/прибыль хуже чем 1:3");
   add(hasChartImage, 7, "график прикреплён", "график не прикреплён");
