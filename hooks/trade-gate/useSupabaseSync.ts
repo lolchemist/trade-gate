@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch } from "react";
-import type { AppStatus, PlanningState } from "@/types/trade-gate";
+import type { AppStatus, PlanningState, StorageSaveResult } from "@/types/trade-gate";
 import type { PlanningAction } from "./useTradeGateState";
 
 type TradeGateStorage = ReturnType<typeof import("@/components/trade-gate/storage").createTradeGateStorage>;
@@ -92,7 +92,7 @@ export function useSupabaseSync({
     return () => window.clearTimeout(timeout);
   }, [dispatchPlanning, isHydrated, isInitialSyncComplete, planning, storage]);
 
-  const saveNow = async () => {
+  const saveNow = async (): Promise<StorageSaveResult | null> => {
     try {
       setAppStatus("syncing");
       setSyncStatus(storage.isCloudConfigured ? "Syncing…" : "Saved locally");
@@ -103,10 +103,12 @@ export function useSupabaseSync({
         skipNextAutoSaveRef.current = true;
         dispatchPlanning({ type: "hydrate", payload: { lastUpdatedAt: result.state.lastUpdatedAt } });
       }
+      return result;
     } catch (error) {
       console.error("Failed to save Trade Gate state", error);
       setSyncStatus("Sync error");
       setAppStatus("error");
+      return null;
     }
   };
 

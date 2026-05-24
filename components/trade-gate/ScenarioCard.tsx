@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, CloudUpload, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
@@ -19,6 +19,7 @@ import type {
   ScenarioTrade,
   SelectOption,
   SessionPlan,
+  StorageSaveResult,
   TechnicalStatus,
   TradeArgument,
   TradeExecutionStatus,
@@ -76,11 +77,12 @@ export function ScenarioCard({
   onReopen: (id: number) => void;
   onCarry: (id: number, mode: CarryScenarioMode) => void;
   onRemove: (id: number) => void;
-  onSaveNow: () => void | Promise<void>;
+  onSaveNow: () => Promise<StorageSaveResult | null>;
 }) {
   const ready = isPlanReady(item);
   const [open, setOpen] = useState(!ready);
   const [carryOpen, setCarryOpen] = useState(false);
+  const [manualSaveState, setManualSaveState] = useState<"idle" | "saving" | "saved" | "local" | "error">("idle");
   const tradeMath = useMemo(() => calculateScenarioTradeMath(item), [item]);
   const diagnostic = useScenarioDiagnostic(item, hasChartImage);
   const { validation, quality } = diagnostic;
@@ -89,6 +91,47 @@ export function ScenarioCard({
   const entryMethod = getPlanEntryMethod(item);
   const closed = item.status === "closed";
   const canClose = canCloseScenario(item);
+  const saveButtonLabel =
+    manualSaveState === "saving"
+      ? "Сохраняю..."
+      : manualSaveState === "saved"
+        ? "Сохранено"
+        : manualSaveState === "local"
+          ? "Локально"
+          : manualSaveState === "error"
+            ? "Ошибка"
+            : "Сохранить";
+  const saveButtonLongLabel =
+    manualSaveState === "saving"
+      ? "Сохраняю..."
+      : manualSaveState === "saved"
+        ? "Сохранено"
+        : manualSaveState === "local"
+          ? "Сохранено локально"
+          : manualSaveState === "error"
+            ? "Ошибка сохранения"
+            : "Сохранить в облако";
+
+  useEffect(() => {
+    if (manualSaveState === "idle" || manualSaveState === "saving") return;
+    const timeout = window.setTimeout(() => setManualSaveState("idle"), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [manualSaveState]);
+
+  const handleSaveNow = async () => {
+    if (manualSaveState === "saving") return;
+    setManualSaveState("saving");
+    const result = await onSaveNow();
+    if (result?.source === "supabase" && result.status === "Synced") {
+      setManualSaveState("saved");
+      return;
+    }
+    if (result?.source === "localStorage") {
+      setManualSaveState("local");
+      return;
+    }
+    setManualSaveState("error");
+  };
 
   return (
     <div className={`overflow-hidden rounded-3xl border transition ${closed ? "border-neutral-300/15 bg-white/[0.025] opacity-90" : ready ? "border-emerald-200/18 bg-emerald-200/[0.045]" : "border-white/[0.08] bg-white/[0.025]"}`}>
@@ -160,12 +203,13 @@ export function ScenarioCard({
                 <StatusPill tone={tradeMath.hasData ? "emerald" : "neutral"}>{tradeMath.hasData ? "Расчёт готов" : "Нет расчёта"}</StatusPill>
                 <Button
                   type="button"
-                  onClick={() => void onSaveNow()}
+                  onClick={() => void handleSaveNow()}
+                  disabled={manualSaveState === "saving"}
                   variant="outline"
                   className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]"
                 >
                   <CloudUpload className="mr-2 h-4 w-4" />
-                  Сохранить в облако
+                  {saveButtonLongLabel}
                 </Button>
               </div>
             </div>
@@ -307,9 +351,14 @@ export function ScenarioCard({
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <Button onClick={() => void onSaveNow()} variant="outline" className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]">
+            <Button
+              onClick={() => void handleSaveNow()}
+              disabled={manualSaveState === "saving"}
+              variant="outline"
+              className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]"
+            >
               <CloudUpload className="mr-2 h-4 w-4" />
-              Сохранить
+              {saveButtonLabel}
             </Button>
             <div className="relative">
               <Button onClick={() => setCarryOpen((value) => !value)} variant="outline" className="rounded-xl border border-sky-200/20 bg-sky-200/[0.06] text-sky-100 hover:bg-sky-200/[0.1]">

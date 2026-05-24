@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScenarioCard } from "./ScenarioCard";
 import { getInstrumentImageKey, getMarketIdeaKey, isPlanReady, isScenarioPlannedExposure } from "./utils";
 import { MetricTile, ProgressMeter, StatusPill, TerminalPanel } from "./terminal-ui";
-import type { CarryScenarioMode, EditablePlanField, EditableTradeField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, TradeArgument, TradeExecutionType } from "./types";
+import type { CarryScenarioMode, EditablePlanField, EditableTradeField, MarketIdea, MarketIdeaField, MarketIdeaNotes, PersistedImages, ScenarioTrade, SessionPlan, StorageSaveResult, TradeArgument, TradeExecutionType } from "./types";
 
 const instrumentAccents: Record<string, { title: string; tone: "emerald" | "amber" | "cyan"; gradient: string }> = {
   "UKOIL.cash": { title: "Энергия", tone: "emerald", gradient: "from-emerald-200/[0.09] via-transparent to-sky-100/[0.05]" },
@@ -50,7 +50,7 @@ export function InstrumentCard({
   onReopenPlan: (id: number) => void;
   onCarryPlan: (id: number, mode: CarryScenarioMode) => void;
   onRemovePlan: (id: number) => void;
-  onSaveNow: () => void | Promise<void>;
+  onSaveNow: () => Promise<StorageSaveResult | null>;
 }) {
   const accent = instrumentAccents[idea.symbol] ?? instrumentAccents["UKOIL.cash"];
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
