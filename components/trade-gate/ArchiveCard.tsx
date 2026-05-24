@@ -28,6 +28,7 @@ export function ArchiveCard({ item, onRestore }: ArchiveCardProps) {
   const trades = useMemo(() => getScenarioTrades(item), [item]);
   const totalPnl = getScenarioTotalResult(item);
   const actualRr = getScenarioActualRr(item);
+  const lotLabel = getScenarioLotLabel(trades);
   const executionQuality = getScenarioExecutionQuality(item);
   const bestExecution = getBestExecution(trades);
   const worstExecution = getWorstExecution(trades);
@@ -63,8 +64,9 @@ export function ArchiveCard({ item, onRestore }: ArchiveCardProps) {
               <div className="text-sm text-neutral-500">{item.entryZone || item.note || "Сценарий без описания зоны"}</div>
             </div>
 
-            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-5">
               <CompactStat label="Исполнений" value={String(trades.length)} />
+              <CompactStat label="Лот" value={lotLabel} />
               <CompactStat label="План RR" value={tradeMath.rr > 0 ? `1:${tradeMath.rr.toFixed(2)}` : "—"} />
               <CompactStat label="Факт RR" value={actualRr > 0 ? `1:${actualRr.toFixed(2)}` : "—"} />
               <CompactStat label="Качество" value={`${qualityScore}%`} />
@@ -250,9 +252,10 @@ function ExecutionReplayCard({ trade, index }: { trade: ScenarioTrade; index: nu
         </div>
         <div className={`font-mono text-lg font-semibold ${result >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatSignedCurrency(result)}</div>
       </div>
-      <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+      <div className="mt-3 grid gap-2 text-sm md:grid-cols-5">
         <ArchiveField title="Факт вход" value={trade.actualEntry || "—"} />
         <ArchiveField title="Факт выход" value={trade.actualExit || "—"} />
+        <ArchiveField title="Лотность" value={formatTradeSize(trade.actualSize)} />
         <ArchiveField title="Факт RR" value={trade.actualRr ? `1:${trade.actualRr}` : "—"} />
         <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[trade.technical] ?? trade.technical} />
       </div>
@@ -289,6 +292,19 @@ function getBestExecution(trades: ScenarioTrade[]) {
 
 function getWorstExecution(trades: ScenarioTrade[]) {
   return [...trades].sort((a, b) => (Number(a.actualResult) || 0) - (Number(b.actualResult) || 0))[0];
+}
+
+function getScenarioLotLabel(trades: ScenarioTrade[]) {
+  const sizes = trades.map((trade) => formatTradeSize(trade.actualSize)).filter((value) => value !== "—");
+  if (sizes.length === 0) return "—";
+  if (sizes.length <= 2) return sizes.join(" / ");
+  return `${sizes.slice(0, 2).join(" / ")} +${sizes.length - 2}`;
+}
+
+function formatTradeSize(value: string) {
+  const size = Number(value);
+  if (!Number.isFinite(size) || size <= 0) return value?.trim() || "—";
+  return `${size.toFixed(2)} lot`;
 }
 
 function getExecutionQualityScore(quality: TechnicalStatus) {
