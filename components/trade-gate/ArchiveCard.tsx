@@ -50,9 +50,11 @@ export function ArchiveCard({ item, onRestore }: ArchiveCardProps) {
 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusPill tone={statusTone}>{formatCurrency(totalPnl)}</StatusPill>
               <StatusPill tone={item.direction === "long" ? "emerald" : item.direction === "short" ? "red" : "cyan"}>{item.direction.toUpperCase()}</StatusPill>
               <StatusPill tone="cyan">{entryMethod}</StatusPill>
+              {allArgumentTags.map((argument) => (
+                <StatusPill key={argument} tone="neutral">{argument}</StatusPill>
+              ))}
               {item.carryCount > 0 && <StatusPill tone={stale ? "amber" : "neutral"}>Переносов: {item.carryCount}</StatusPill>}
             </div>
 
