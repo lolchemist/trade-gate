@@ -20,9 +20,9 @@ import { RiskBudgetCard } from "@/components/trade-gate/RiskBudgetCard";
 import { ScenarioReadinessSummary } from "@/components/trade-gate/ScenarioReadinessSummary";
 import { TodayMetricsCard } from "@/components/trade-gate/TodayMetricsCard";
 import { TradeArgumentLibraryCard } from "@/components/trade-gate/TradeArgumentLibraryCard";
-import { WeeklyReportCard } from "@/components/trade-gate/WeeklyReportCard";
 import { MARKET_IDEAS, MAX_INSTRUMENT_IMAGE_BYTES } from "@/components/trade-gate/constants";
 import { NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
+import { useAnalytics } from "@/hooks/trade-gate/useAnalytics";
 import { useLocalStoragePersistence } from "@/hooks/trade-gate/useLocalStoragePersistence";
 import { usePermissionToTrade } from "@/hooks/trade-gate/usePermissionToTrade";
 import { useRiskStatus } from "@/hooks/trade-gate/useRiskStatus";
@@ -30,7 +30,6 @@ import { useScenarioDiagnostics } from "@/hooks/trade-gate/useScenarioDiagnostic
 import { initialPlanningState, planningReducer, type PlanningAction, useTradeGateState } from "@/hooks/trade-gate/useTradeGateState";
 import { useSupabaseSync } from "@/hooks/trade-gate/useSupabaseSync";
 import { useTodayMetrics } from "@/hooks/trade-gate/useTodayMetrics";
-import { useWeeklyReport } from "@/hooks/trade-gate/useWeeklyReport";
 import {
   formatPlanDate,
   formatSyncStatus,
@@ -258,7 +257,14 @@ export default function TradeGateApp() {
     propDailyLossHit: todayMetrics.propDailyLossHit,
   });
 
-  const { weeklyReport, analyticsStats } = useWeeklyReport(archivedPlans, activePlanDate, emergencyNotes);
+  const analytics = useAnalytics({
+    archivedPlans,
+    activePlanDate,
+    riskControlsByDate,
+    dailyRiskBudgets,
+    accountSettings,
+    emergencyNotes,
+  });
   const isLocked = tradingDayStatus === "locked" || riskResult.status === "LOCKED";
   const permission = usePermissionToTrade({
     isReady: isTradingStateReady,
@@ -720,17 +726,7 @@ export default function TradeGateApp() {
 
         {activeTab === "analytics" && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            <WeeklyReportCard report={weeklyReport} />
-            <AnalyticsDashboard
-              report={weeklyReport}
-              byInstrument={analyticsStats.byInstrument}
-              byArgument={analyticsStats.byArgument}
-              byEntryMethod={analyticsStats.byEntryMethod}
-              byScenarioArgument={analyticsStats.byScenarioArgument}
-              byArgumentCombination={analyticsStats.byArgumentCombination}
-              mistakeCount={analyticsStats.mistakeCount}
-              revengeNoteCount={analyticsStats.revengeNoteCount}
-            />
+            <AnalyticsDashboard analytics={analytics} />
           </motion.div>
         )}
 
