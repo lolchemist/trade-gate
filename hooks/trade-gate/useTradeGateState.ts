@@ -244,7 +244,20 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
       };
     case "set-risk-control": {
       const currentControls = getRiskControlsForDate(state.riskControlsByDate, action.planDate);
-      const nextControls = { ...currentControls, [action.field]: action.value, updatedAt: new Date().toISOString() };
+      const updatedAt = new Date().toISOString();
+      const emotionalHistory =
+        action.field === "anxiety" || action.field === "urge" || action.field === "anger"
+          ? [
+              ...(currentControls.emotionalHistory ?? []),
+              {
+                anxiety: Number(action.field === "anxiety" ? action.value : currentControls.anxiety) || 0,
+                urge: Number(action.field === "urge" ? action.value : currentControls.urge) || 0,
+                anger: Number(action.field === "anger" ? action.value : currentControls.anger) || 0,
+                recordedAt: updatedAt,
+              },
+            ].slice(-36)
+          : currentControls.emotionalHistory;
+      const nextControls = { ...currentControls, [action.field]: action.value, emotionalHistory, updatedAt };
 
       return {
         ...state,

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { AccountSettingsCard } from "@/components/trade-gate/AccountSettingsCard";
 import { AnalyticsDashboard } from "@/components/trade-gate/AnalyticsDashboard";
 import { ArchiveDayGroup } from "@/components/trade-gate/ArchiveDayGroup";
+import { BehavioralRiskPanel } from "@/components/trade-gate/BehavioralRiskPanel";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
 import { HeroStatus, LoadingHero } from "@/components/trade-gate/HeroStatus";
@@ -23,6 +24,7 @@ import { TradeArgumentLibraryCard } from "@/components/trade-gate/TradeArgumentL
 import { MARKET_IDEAS, MAX_INSTRUMENT_IMAGE_BYTES } from "@/components/trade-gate/constants";
 import { NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
 import { useAnalytics } from "@/hooks/trade-gate/useAnalytics";
+import { useBehavioralRiskEngine } from "@/hooks/trade-gate/useBehavioralRiskEngine";
 import { useLocalStoragePersistence } from "@/hooks/trade-gate/useLocalStoragePersistence";
 import { usePermissionToTrade } from "@/hooks/trade-gate/usePermissionToTrade";
 import { useRiskStatus } from "@/hooks/trade-gate/useRiskStatus";
@@ -234,6 +236,14 @@ export default function TradeGateApp() {
     () => activePlansForDate.filter(isPlanReady).length,
     [activePlansForDate]
   );
+  const behavioralRisk = useBehavioralRiskEngine({
+    activePlanDate,
+    sessionPlans,
+    archivedPlans,
+    riskControls: activeRiskControls,
+    todayMetrics,
+    accountSettings,
+  });
 
   const riskResult = useRiskStatus({
     sleep,
@@ -256,6 +266,7 @@ export default function TradeGateApp() {
     dailyRiskRemaining,
     propDailyLossClose,
     propDailyLossHit: todayMetrics.propDailyLossHit,
+    behavioralRisk,
   });
 
   const analytics = useAnalytics({
@@ -277,6 +288,7 @@ export default function TradeGateApp() {
     tradesToday: todayMetrics.tradesToday,
     consecutiveStops: todayMetrics.consecutiveStops,
     bestValidScenario,
+    behavioralRisk,
   });
 
   const shiftPlanDate = (days: number) => {
@@ -503,6 +515,7 @@ export default function TradeGateApp() {
                 <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked && !isTradingDayClosed ? "opacity-80" : ""}`}>
                   <div className="space-y-5">
                     <PermissionCard permission={permission} />
+                    {!isTradingDayClosed && <BehavioralRiskPanel behavioralRisk={behavioralRisk} />}
                     <TodayMetricsCard metrics={todayMetrics} />
                     {!isTradingDayClosed && <ScenarioReadinessSummary diagnostics={scenarioDiagnostics} />}
                     {!isTradingDayClosed && <ReadinessDashboard result={riskResult} sleep={sleep} anxiety={anxiety} urge={urge} anger={anger} />}

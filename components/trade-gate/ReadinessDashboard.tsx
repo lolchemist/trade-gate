@@ -26,6 +26,8 @@ export function ReadinessDashboard({
         <ProgressMeter label="Исполнение" value={result.readiness.execution} tone="emerald" />
         <ProgressMeter label="Эмоции" value={result.readiness.emotional} tone="cyan" />
         <ProgressMeter label="Дисциплина" value={result.readiness.discipline} tone="emerald" />
+        <ProgressMeter label="Когнитивная ясность" value={result.readiness.cognitiveClarity} tone="cyan" />
+        <ProgressMeter label="Качество сессии" value={result.readiness.sessionQuality} tone={result.readiness.sessionQuality >= 70 ? "emerald" : "amber"} />
         <ProgressMeter label="Риск отбиться" value={result.revengeDetectorScore} tone="emerald" inverse />
         <ProgressMeter label="Эмоциональное давление" value={pressure} tone="amber" inverse />
         <ProgressMeter label="Восстановление сна" value={sleepRecovery} tone="cyan" />

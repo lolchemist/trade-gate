@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { LOSS_LIMIT } from "@/constants/trade-gate";
 import { getBestValidScenario, validateScenarioPlan } from "@/components/trade-gate/utils";
+import type { BehavioralRiskResult } from "@/hooks/trade-gate/useBehavioralRiskEngine";
 import type { GateResult, ReadinessScores, SessionPlan } from "@/types/trade-gate";
 
 type UseRiskStatusInput = {
@@ -24,6 +25,7 @@ type UseRiskStatusInput = {
   dailyRiskRemaining: number;
   propDailyLossClose: boolean;
   propDailyLossHit: boolean;
+  behavioralRisk?: BehavioralRiskResult;
 };
 
 export function useRiskStatus(input: UseRiskStatusInput): GateResult {
@@ -48,6 +50,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
     dailyRiskRemaining,
     propDailyLossClose,
     propDailyLossHit,
+    behavioralRisk,
   } = input;
 
   return useMemo(
@@ -73,6 +76,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
         dailyRiskRemaining,
         propDailyLossClose,
         propDailyLossHit,
+        behavioralRisk,
       }),
     [
       sleep,
@@ -95,6 +99,7 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
       dailyRiskRemaining,
       propDailyLossClose,
       propDailyLossHit,
+      behavioralRisk,
     ]
   );
 }
@@ -120,6 +125,7 @@ function calculateRiskStatus({
   dailyRiskRemaining,
   propDailyLossClose,
   propDailyLossHit,
+  behavioralRisk,
 }: UseRiskStatusInput): GateResult {
   let riskScore = 0;
   const reasons: string[] = [];
@@ -128,6 +134,8 @@ function calculateRiskStatus({
     execution: 100,
     emotional: 100,
     discipline: 100,
+    cognitiveClarity: 100,
+    sessionQuality: 100,
   };
 
   const now = new Date();
@@ -256,6 +264,31 @@ function calculateRiskStatus({
     reasons.push("включено ‘Есть желание отбиться’ — жёсткая блокировка");
   }
 
+  if (behavioralRisk) {
+    readiness.cognitiveClarity = Math.min(readiness.cognitiveClarity, behavioralRisk.cognitiveClarity);
+    readiness.sessionQuality = Math.min(readiness.sessionQuality, behavioralRisk.sessionQuality);
+    readiness.emotional = Math.min(readiness.emotional, Math.max(0, 100 - behavioralRisk.revengeScore));
+    if (behavioralRisk.state === "YELLOW") {
+      riskScore += 4;
+      warnings.push(...behavioralRisk.warnings, ...behavioralRisk.reasons);
+    }
+    if (behavioralRisk.state === "ORANGE") {
+      riskScore += 8;
+      reasons.push("ORANGE: эмоциональная нестабильность, разрешена только симуляция / cooldown");
+      warnings.push(...behavioralRisk.warnings, ...behavioralRisk.reasons);
+    }
+    if (behavioralRisk.state === "RED") {
+      riskScore += 100;
+      readiness.execution = 0;
+      readiness.emotional = 0;
+      readiness.discipline = Math.min(readiness.discipline, 10);
+      readiness.cognitiveClarity = Math.min(readiness.cognitiveClarity, 10);
+      readiness.sessionQuality = Math.min(readiness.sessionQuality, 10);
+      reasons.push("RED: поведенческий риск перешёл в блокировку");
+      reasons.push(...behavioralRisk.reasons);
+    }
+  }
+
   if (validScenarioCount === 0) {
     riskScore += 5;
     readiness.execution -= 25;
@@ -274,7 +307,7 @@ function calculateRiskStatus({
     warnings.push("Лучший готовый сценарий имеет R:R ниже 1:1.5 — сделка может быть невыгодной по математике");
   }
 
-  const revengeDetectorScore = Math.min(
+  const baseRevengeDetectorScore = Math.min(
     100,
     (revenge ? 45 : 0) +
       (urge >= 7 ? 20 : 0) +
@@ -283,6 +316,7 @@ function calculateRiskStatus({
       (dailyPnlNumber < 0 ? 10 : 0) +
       (tradesTodayNumber >= 3 ? 15 : 0)
   );
+  const revengeDetectorScore = Math.max(baseRevengeDetectorScore, behavioralRisk?.revengeScore ?? 0);
 
   if (revengeDetectorScore >= 60) {
     reasons.push("Детектор желания отбиться: состояние похоже на попытку вернуть убыток, а не на спокойное исполнение плана");
@@ -295,8 +329,10 @@ function calculateRiskStatus({
   readiness.execution = Math.max(0, Math.min(100, Math.round(readiness.execution)));
   readiness.emotional = Math.max(0, Math.min(100, Math.round(readiness.emotional)));
   readiness.discipline = Math.max(0, Math.min(100, Math.round(readiness.discipline)));
+  readiness.cognitiveClarity = Math.max(0, Math.min(100, Math.round(readiness.cognitiveClarity)));
+  readiness.sessionQuality = Math.max(0, Math.min(100, Math.round(readiness.sessionQuality)));
 
-  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || propDailyLossHit || dailyRiskRemaining <= 0 || revenge || !stopSet || validScenarioCount === 0 || stopsNumber >= 2;
+  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || propDailyLossHit || dailyRiskRemaining <= 0 || revenge || !stopSet || validScenarioCount === 0 || stopsNumber >= 2 || behavioralRisk?.state === "RED";
 
   if (hardLock) {
     return {

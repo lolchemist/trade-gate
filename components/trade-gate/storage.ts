@@ -320,6 +320,7 @@ function normalizeRiskControls(value: Partial<RiskControlState> | undefined, fal
     anxiety: Number(value?.anxiety ?? 5),
     urge: Number(value?.urge ?? 5),
     anger: Number(value?.anger ?? 2),
+    emotionalHistory: normalizeEmotionalHistory(value?.emotionalHistory),
     dailyPnl: value?.dailyPnl ?? 0,
     dailyLoss: value?.dailyLoss ?? "0",
     tradesToday: value?.tradesToday ?? 0,
@@ -332,6 +333,19 @@ function normalizeRiskControls(value: Partial<RiskControlState> | undefined, fal
     emergencyNote: value?.emergencyNote ?? fallbackEmergencyNote,
     updatedAt: value?.updatedAt ?? "",
   });
+}
+
+function normalizeEmotionalHistory(value: RiskControlState["emotionalHistory"]) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => ({
+      anxiety: Number(item?.anxiety) || 0,
+      urge: Number(item?.urge) || 0,
+      anger: Number(item?.anger) || 0,
+      recordedAt: item?.recordedAt ?? "",
+    }))
+    .filter((item) => item.recordedAt)
+    .slice(-36);
 }
 
 function normalizeTradeArguments(tradeArguments: TradeArgument[] | undefined, defaultArguments = DEFAULT_TRADE_ARGUMENTS): TradeArgument[] {

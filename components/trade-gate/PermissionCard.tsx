@@ -48,7 +48,17 @@ export function PermissionCard({ permission }: { permission: PermissionToTrade }
         <MetricTile label="Ещё сделок" value={String(permission.maxAdditionalTrades)} />
         <MetricTile label="Повторный вход" value={permission.reEntryAllowed ? "Да" : "Нет"} tone={permission.reEntryAllowed ? "emerald" : "red"} />
       </div>
+      <div className="mt-3">
+        <StatusPill tone={tone}>Режим: {modeLabel(permission.mode)}</StatusPill>
+      </div>
       <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-200">{permission.instruction}</div>
     </TerminalPanel>
   );
+}
+
+function modeLabel(mode: PermissionToTrade["mode"]) {
+  if (mode === "normal") return "normal";
+  if (mode === "reduced") return "reduced";
+  if (mode === "sim_only") return "sim only";
+  return "locked";
 }

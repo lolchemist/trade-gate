@@ -144,6 +144,7 @@ export interface RiskControlState {
   anxiety: number;
   urge: number;
   anger: number;
+  emotionalHistory?: EmotionalSnapshot[];
   dailyPnl: string | number;
   dailyLoss: string | number;
   tradesToday: string | number;
@@ -158,6 +159,13 @@ export interface RiskControlState {
 }
 
 export type RiskControlField = keyof RiskControlState;
+
+export interface EmotionalSnapshot {
+  anxiety: number;
+  urge: number;
+  anger: number;
+  recordedAt: string;
+}
 
 export interface WeeklyReport {
   weekStart: string;
@@ -208,6 +216,7 @@ export interface WeeklyScenarioArgumentReport {
 
 export interface PermissionToTrade {
   permission: "granted" | "reduced" | "denied";
+  mode: "normal" | "reduced" | "sim_only" | "locked";
   maxAllowedRisk: number;
   maxAllowedLot: number;
   maxAdditionalTrades: number;
@@ -309,6 +318,8 @@ export interface ReadinessScores {
   execution: number;
   emotional: number;
   discipline: number;
+  cognitiveClarity: number;
+  sessionQuality: number;
 }
 
 export interface GateResult {

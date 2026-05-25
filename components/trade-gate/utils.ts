@@ -158,6 +158,7 @@ export function createDefaultRiskControls(overrides: Partial<RiskControlState> =
     anxiety: 5,
     urge: 5,
     anger: 2,
+    emotionalHistory: [],
     dailyPnl: 0,
     dailyLoss: "0",
     tradesToday: 0,
@@ -597,6 +598,7 @@ export function calculatePermission({
   if (status === "LOCKED" || personalDailyStopHit || dailyRiskRemaining <= 0 || revengeDetectorScore >= 60 || consecutiveStops >= 2) {
     return {
       permission: "denied",
+      mode: "locked",
       maxAllowedRisk: 0,
       maxAllowedLot: 0,
       maxAdditionalTrades: 0,
@@ -612,6 +614,7 @@ export function calculatePermission({
     const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 250));
     return {
       permission: "reduced",
+      mode: "reduced",
       maxAllowedRisk,
       maxAllowedLot: scaleLot(maxAllowedRisk),
       maxAdditionalTrades: Math.min(maxAdditionalTrades, 1),
@@ -623,6 +626,7 @@ export function calculatePermission({
   const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 500));
   return {
     permission: "granted",
+    mode: "normal",
     maxAllowedRisk,
     maxAllowedLot: scaleLot(maxAllowedRisk),
     maxAdditionalTrades,
