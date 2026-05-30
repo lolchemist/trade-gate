@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
+import { persistNormalizedTradeGateState } from "@/lib/trade-gate-db/normalized-sync";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
 import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields } from "./utils";
 import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
@@ -174,6 +175,7 @@ export function createTradeGateStorage(config: StorageConfig) {
         );
 
         if (!error) {
+          await persistNormalizedTradeGateState(supabase, normalizedState, now);
           writeLocalState(normalizedState);
           return {
             source: "supabase",
