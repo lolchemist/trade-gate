@@ -289,6 +289,7 @@ export interface CloudPayload {
   tradingDayStatusByDate: Record<string, TradingDayStatus>;
   /** Legacy alias kept for existing saved state compatibility. */
   tradingDayStatuses: Record<string, TradingDayStatus>;
+  tradingDayReopenedAtByDate: Record<string, string>;
   riskControlsByDate: Record<string, RiskControlState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;

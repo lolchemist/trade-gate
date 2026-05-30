@@ -13,6 +13,18 @@ type CloudTimestampRow = {
   updated_at: string | null;
 };
 
+type StateFootprint = {
+  score: number;
+  meaningfulSessionPlans: number;
+  archivedPlans: number;
+  trades: number;
+  images: number;
+  notes: number;
+  riskControls: number;
+  dailyRiskBudgets: number;
+  closedOrLockedDays: number;
+};
+
 type StorageConfig = {
   supabaseUrl?: string;
   supabaseAnonKey?: string;
@@ -20,6 +32,8 @@ type StorageConfig = {
 
 const TABLE_NAME = "trade_gate_state";
 const DEFAULT_SYNC_KEY = "nataliia-main";
+const LOCAL_BACKUP_KEY = `${STORAGE_KEY}:backup`;
+const LOCAL_BACKUP_CREATED_AT_KEY = `${STORAGE_KEY}:backup-created-at`;
 
 export function createTradeGateStorage(config: StorageConfig) {
   const supabase = createSupabaseClient(config);
@@ -70,12 +84,19 @@ export function createTradeGateStorage(config: StorageConfig) {
         };
       }
 
-      const cloudTime = Date.parse(cloudResult.state.lastUpdatedAt || "");
-      const localTime = Date.parse(currentState.lastUpdatedAt || "");
+      const cloudPreference = getCloudLoadPreference(currentState, cloudResult.state);
 
-      if (Number.isFinite(cloudTime) && cloudTime > (Number.isFinite(localTime) ? localTime : 0)) {
+      if (cloudPreference.useCloud) {
         writeLocalState(cloudResult.state);
         return cloudResult;
+      }
+
+      if (cloudPreference.message) {
+        return {
+          state: currentState,
+          source: "localStorage",
+          message: cloudPreference.message,
+        };
       }
 
       return {
@@ -85,15 +106,24 @@ export function createTradeGateStorage(config: StorageConfig) {
       };
     },
     async load(syncKey: string, defaultState: PlanningState): Promise<StorageLoadResult> {
+      const localResult = readLocalState({ ...defaultState, syncKey });
+
       if (supabase) {
         try {
           const cloudResult = await loadFromSupabase(supabase, syncKey, defaultState);
           if (cloudResult) {
+            const cloudPreference = getCloudLoadPreference(localResult.state, cloudResult.state);
+            if (!cloudPreference.useCloud && cloudPreference.message) {
+              return {
+                state: localResult.state,
+                source: localResult.found ? "localStorage" : "default",
+                message: cloudPreference.message,
+              };
+            }
             writeLocalState(cloudResult.state);
             return cloudResult;
           }
         } catch {
-          const localResult = readLocalState({ ...defaultState, syncKey });
           return {
             state: localResult.state,
             source: "localStorage",
@@ -102,7 +132,6 @@ export function createTradeGateStorage(config: StorageConfig) {
         }
       }
 
-      const localResult = readLocalState({ ...defaultState, syncKey });
       return {
         state: localResult.state,
         source: localResult.found ? "localStorage" : "default",
@@ -119,9 +148,12 @@ export function createTradeGateStorage(config: StorageConfig) {
       const currentState = normalizePlanningState(state);
 
       if (supabase) {
-        const conflict = await getCloudConflict(supabase, currentState.syncKey, currentState.lastUpdatedAt);
+        const cloudResult = await loadFromSupabase(supabase, currentState.syncKey, currentState).catch(() => null);
+        const conflict = cloudResult
+          ? getCloudSaveBlocker(currentState, cloudResult.state)
+          : await getCloudConflict(supabase, currentState.syncKey, currentState.lastUpdatedAt);
         if (conflict) {
-          writeLocalState(currentState);
+          if (!isSparseState(getStateFootprint(currentState))) writeLocalState(currentState);
           return {
             source: "localStorage",
             message: conflict,
@@ -192,6 +224,152 @@ async function getCloudConflict(supabase: SupabaseClient, syncKey: string, local
   return "";
 }
 
+function getCloudLoadPreference(localState: PlanningState, cloudState: PlanningState) {
+  const cloudTime = Date.parse(cloudState.lastUpdatedAt || "");
+  const localTime = Date.parse(localState.lastUpdatedAt || "");
+  const cloudNewer = Number.isFinite(cloudTime) && cloudTime > (Number.isFinite(localTime) ? localTime : 0);
+  const localFootprint = getStateFootprint(localState);
+  const cloudFootprint = getStateFootprint(cloudState);
+  const cloudRicher = isMeaningfullyRicher(cloudFootprint, localFootprint);
+  const localRicher = isMeaningfullyRicher(localFootprint, cloudFootprint);
+
+  if ((cloudNewer || cloudRicher) && !localRicher) return { useCloud: true, message: "" };
+
+  if (cloudNewer && localRicher) {
+    return {
+      useCloud: false,
+      message: "Sync error: локальные данные выглядят полнее, чем более свежая облачная запись. Автозагрузка из облака остановлена, чтобы не потерять сценарии.",
+    };
+  }
+
+  if (isSparseState(localFootprint) && hasMeaningfulTradingData(cloudFootprint)) return { useCloud: true, message: "" };
+
+  return { useCloud: false, message: "" };
+}
+
+function getCloudSaveBlocker(localState: PlanningState, cloudState: PlanningState) {
+  const cloudTime = Date.parse(cloudState.lastUpdatedAt || "");
+  const localTime = Date.parse(localState.lastUpdatedAt || "");
+  const cloudNewer = Number.isFinite(cloudTime) && cloudTime > (Number.isFinite(localTime) ? localTime : 0) + 1000;
+  const localFootprint = getStateFootprint(localState);
+  const cloudFootprint = getStateFootprint(cloudState);
+  const localRicher = isMeaningfullyRicher(localFootprint, cloudFootprint);
+  const cloudRicher = isMeaningfullyRicher(cloudFootprint, localFootprint);
+
+  if (cloudRicher && !localRicher) {
+    return "Sync error: облачная запись содержит больше сценариев/архива, чем текущий локальный снимок. Сохранение в облако остановлено, чтобы не перезаписать данные.";
+  }
+
+  if (cloudNewer && !localRicher) {
+    return "Sync error: в облаке есть более свежие данные. Загрузите из облака перед сохранением.";
+  }
+
+  if (isSparseState(localFootprint) && hasMeaningfulTradingData(cloudFootprint)) {
+    return "Sync error: текущий снимок почти пустой, а в облаке есть торговые данные. Сохранение остановлено.";
+  }
+
+  return "";
+}
+
+function getStateFootprint(state: PlanningState): StateFootprint {
+  const sessionPlans = Array.isArray(state.sessionPlans) ? state.sessionPlans : [];
+  const archivedPlans = Array.isArray(state.archivedPlans) ? state.archivedPlans : [];
+  const allPlans = [...sessionPlans, ...archivedPlans];
+  const meaningfulSessionPlans = sessionPlans.filter(isMeaningfulPlan).length;
+  const archivedCount = archivedPlans.length;
+  const trades = allPlans.reduce((count, plan) => count + (Array.isArray(plan.trades) ? plan.trades.length : 0), 0);
+  const images = Object.values(state.instrumentImages ?? {}).filter(Boolean).length + allPlans.filter((plan) => Boolean(plan.chartImage)).length;
+  const notes = Object.values(state.marketIdeaNotes ?? {}).filter((note) => typeof note === "string" && note.trim()).length + allPlans.filter(hasPlanNotes).length;
+  const riskControls = Object.values(state.riskControlsByDate ?? {}).filter(isMeaningfulRiskControl).length;
+  const dailyRiskBudgets = Object.values(state.dailyRiskBudgets ?? {}).filter((budget) => Number(budget?.budgetUsd) > 0).length;
+  const closedOrLockedDays = Object.values(state.tradingDayStatuses ?? state.tradingDayStatusByDate ?? {}).filter((status) => status === "closed" || status === "locked").length;
+  const score =
+    meaningfulSessionPlans * 12 +
+    archivedCount * 30 +
+    trades * 10 +
+    images * 8 +
+    notes * 4 +
+    riskControls * 3 +
+    dailyRiskBudgets * 3 +
+    closedOrLockedDays * 6;
+
+  return {
+    score,
+    meaningfulSessionPlans,
+    archivedPlans: archivedCount,
+    trades,
+    images,
+    notes,
+    riskControls,
+    dailyRiskBudgets,
+    closedOrLockedDays,
+  };
+}
+
+function isMeaningfulPlan(plan: SessionPlan) {
+  if (Array.isArray(plan.trades) && plan.trades.length > 0) return true;
+  if (plan.status && plan.status !== "planned") return true;
+  if (plan.resultStatus && plan.resultStatus !== "not_taken") return true;
+
+  return hasAnyText([
+    plan.entryZone,
+    plan.entryMethod,
+    plan.stop,
+    plan.take,
+    plan.note,
+    plan.finalResult,
+    plan.archiveComment,
+    plan.tradeEntry,
+    plan.tradeRisk,
+    plan.scenarioInvalidation,
+    plan.scenarioQuality,
+    plan.riskBudgetAllocation,
+    plan.chartImage,
+  ]);
+}
+
+function hasPlanNotes(plan: SessionPlan) {
+  return hasAnyText([plan.note, plan.archiveComment, plan.closeComment, plan.scenarioInvalidation]);
+}
+
+function isMeaningfulRiskControl(control: RiskControlState) {
+  return (
+    Number(control.dailyPnl) !== 0 ||
+    Number(control.dailyLoss) !== 0 ||
+    Number(control.tradesToday) !== 0 ||
+    Number(control.consecutiveStops) !== 0 ||
+    control.plan ||
+    control.newsChecked ||
+    control.stopSet ||
+    control.revenge ||
+    Boolean(control.lockUntil) ||
+    Boolean(control.emergencyNote?.trim()) ||
+    Boolean(control.updatedAt)
+  );
+}
+
+function hasAnyText(values: unknown[]) {
+  return values.some((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+function hasMeaningfulTradingData(footprint: StateFootprint) {
+  return footprint.archivedPlans > 0 || footprint.meaningfulSessionPlans > 0 || footprint.trades > 0 || footprint.images > 0 || footprint.notes > 0;
+}
+
+function isSparseState(footprint: StateFootprint) {
+  return footprint.score <= 6 && !hasMeaningfulTradingData(footprint);
+}
+
+function isMeaningfullyRicher(candidate: StateFootprint, baseline: StateFootprint) {
+  const hasMoreCoreData =
+    candidate.archivedPlans > baseline.archivedPlans ||
+    candidate.meaningfulSessionPlans > baseline.meaningfulSessionPlans ||
+    candidate.trades > baseline.trades ||
+    candidate.images > baseline.images;
+
+  return hasMeaningfulTradingData(candidate) && hasMoreCoreData && candidate.score >= baseline.score + 10;
+}
+
 async function loadFromSupabase(supabase: SupabaseClient, syncKey: string, defaultState: PlanningState): Promise<StorageLoadResult | null> {
   const { data, error } = await supabase.from(TABLE_NAME).select("data, updated_at").eq("user_key", syncKey).maybeSingle<CloudStateRow>();
 
@@ -210,11 +388,30 @@ function readLocalState(defaultState: PlanningState): { state: PlanningState; fo
 
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (!saved) return { state: defaultState, found: false };
-    return { state: normalizePlanningState(JSON.parse(saved) as Partial<PlanningState>, defaultState), found: true };
+    const backupState = readLocalBackupState(defaultState);
+    if (!saved) return backupState ? { state: backupState, found: true } : { state: defaultState, found: false };
+
+    const primaryState = normalizePlanningState(JSON.parse(saved) as Partial<PlanningState>, defaultState);
+    if (backupState && isMeaningfullyRicher(getStateFootprint(backupState), getStateFootprint(primaryState))) {
+      return { state: backupState, found: true };
+    }
+
+    return { state: primaryState, found: true };
   } catch (error) {
     console.error("Failed to load saved Trade Gate state", error);
-    return { state: defaultState, found: false };
+    const backupState = readLocalBackupState(defaultState);
+    return backupState ? { state: backupState, found: true } : { state: defaultState, found: false };
+  }
+}
+
+function readLocalBackupState(defaultState: PlanningState) {
+  try {
+    const savedBackup = window.localStorage.getItem(LOCAL_BACKUP_KEY);
+    if (!savedBackup) return null;
+    return normalizePlanningState(JSON.parse(savedBackup) as Partial<PlanningState>, defaultState);
+  } catch (error) {
+    console.error("Failed to load Trade Gate backup state", error);
+    return null;
   }
 }
 
@@ -222,9 +419,32 @@ function writeLocalState(state: PlanningState) {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizePlanningState(state)));
+    const normalizedState = normalizePlanningState(state);
+    const nextSerialized = JSON.stringify(normalizedState);
+    backupLocalStateBeforeOverwrite(normalizedState, nextSerialized);
+    window.localStorage.setItem(STORAGE_KEY, nextSerialized);
   } catch (error) {
     console.error("Failed to save Trade Gate state", error);
+  }
+}
+
+function backupLocalStateBeforeOverwrite(nextState: PlanningState, nextSerialized: string) {
+  const existingSerialized = window.localStorage.getItem(STORAGE_KEY);
+  if (!existingSerialized || existingSerialized === nextSerialized) return;
+
+  try {
+    const existingState = normalizePlanningState(JSON.parse(existingSerialized) as Partial<PlanningState>, nextState);
+    const existingFootprint = getStateFootprint(existingState);
+    const nextFootprint = getStateFootprint(nextState);
+    if (!hasMeaningfulTradingData(existingFootprint)) return;
+
+    const existingIsSafer = isMeaningfullyRicher(existingFootprint, nextFootprint) || existingFootprint.score >= nextFootprint.score;
+    if (!existingIsSafer) return;
+
+    window.localStorage.setItem(LOCAL_BACKUP_KEY, existingSerialized);
+    window.localStorage.setItem(LOCAL_BACKUP_CREATED_AT_KEY, new Date().toISOString());
+  } catch (error) {
+    console.error("Failed to backup Trade Gate local state", error);
   }
 }
 
@@ -513,6 +733,7 @@ function toCloudPayload(state: PlanningState): CloudPayload {
     dailyRiskBudgets: state.dailyRiskBudgets,
     tradingDayStatusByDate: state.tradingDayStatusByDate,
     tradingDayStatuses: state.tradingDayStatuses,
+    tradingDayReopenedAtByDate: state.tradingDayReopenedAtByDate,
     riskControlsByDate: state.riskControlsByDate,
     accountSettings: state.accountSettings,
     emergencyNotes: state.emergencyNotes,
