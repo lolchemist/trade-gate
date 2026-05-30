@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { persistNormalizedTradeGateState } from "@/lib/trade-gate-db/normalized-sync";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
+import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
 import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields } from "./utils";
-import type { ArchivedPlan, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
+import type { ArchivedPlan, FTMODailyState, FTMOSettings, LocalSessionSettings, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
 type CloudStateRow = {
   data: unknown;
@@ -459,6 +459,10 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
   const emergencyNotes = state.emergencyNotes ?? defaultState?.emergencyNotes ?? {};
   const emergencyLock = state.emergencyLock ?? defaultState?.emergencyLock ?? { revenge: false, lockUntil: "" };
   const riskControlsByDate = normalizeRiskControlsByDate(state.riskControlsByDate, defaultState?.riskControlsByDate, activePlanDate, emergencyNotes, emergencyLock);
+  const ftmoSettings = normalizeFtmoSettings(state.ftmoSettings, defaultState?.ftmoSettings);
+  const localSessionSettings = normalizeLocalSessionSettings(state.localSessionSettings, defaultState?.localSessionSettings);
+  const controlSessionDate = state.controlSessionDate ?? defaultState?.controlSessionDate ?? activePlanDate;
+  const ftmoDailyStateByFtmoTradingDay = normalizeFtmoDailyStateByDay(state.ftmoDailyStateByFtmoTradingDay, defaultState?.ftmoDailyStateByFtmoTradingDay, activePlanDate, ftmoSettings.accountSize);
   const tradingDayReopenedAtByDate = {
     ...(defaultState?.tradingDayReopenedAtByDate ?? {}),
     ...(state.tradingDayReopenedAtByDate ?? {}),
@@ -482,12 +486,58 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     tradingDayStatuses,
     tradingDayReopenedAtByDate,
     riskControlsByDate,
+    controlSessionDate,
+    ftmoSettings,
+    localSessionSettings,
+    ftmoDailyStateByFtmoTradingDay,
     accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
     emergencyNotes,
     emergencyLock,
     activePlanDate,
     syncKey: state.syncKey ?? defaultState?.syncKey ?? DEFAULT_SYNC_KEY,
     lastUpdatedAt: state.lastUpdatedAt ?? defaultState?.lastUpdatedAt ?? "",
+  };
+}
+
+function normalizeFtmoSettings(settings?: Partial<FTMOSettings>, defaultSettings?: FTMOSettings): FTMOSettings {
+  const merged = { ...DEFAULT_FTMO_SETTINGS, ...(defaultSettings ?? {}), ...(settings ?? {}) };
+  return {
+    ...merged,
+    accountType: "FTMO 2-Step",
+    challengePhase: merged.challengePhase === "Phase 2" || merged.challengePhase === "Funded" ? merged.challengePhase : "Phase 1",
+    bestDayRuleEnabled: Boolean(merged.bestDayRuleEnabled),
+    hardBestDayRuleEnforcement: Boolean(merged.hardBestDayRuleEnforcement),
+  };
+}
+
+function normalizeLocalSessionSettings(settings?: Partial<LocalSessionSettings>, defaultSettings?: LocalSessionSettings): LocalSessionSettings {
+  const merged = { ...DEFAULT_LOCAL_SESSION_SETTINGS, ...(defaultSettings ?? {}), ...(settings ?? {}) };
+  return {
+    ...merged,
+    activeTradingDays: Array.isArray(merged.activeTradingDays) && merged.activeTradingDays.length > 0 ? merged.activeTradingDays.map(Number).filter((day) => day >= 0 && day <= 6) : DEFAULT_LOCAL_SESSION_SETTINGS.activeTradingDays,
+    skipWeekends: Boolean(merged.skipWeekends),
+    allowAfterHoursTrading: Boolean(merged.allowAfterHoursTrading),
+  };
+}
+
+function normalizeFtmoDailyStateByDay(
+  states: Record<string, Partial<FTMODailyState>> | undefined,
+  defaultStates: Record<string, FTMODailyState> | undefined,
+  activePlanDate: string,
+  accountSize: string
+) {
+  const merged = { ...(defaultStates ?? {}), ...(states ?? {}) };
+  const normalized = Object.fromEntries(Object.entries(merged).map(([day, value]) => [day, normalizeFtmoDailyState(value, day, accountSize)])) as Record<string, FTMODailyState>;
+  if (!normalized[activePlanDate]) normalized[activePlanDate] = createDefaultFtmoDailyState(activePlanDate, accountSize);
+  return normalized;
+}
+
+function normalizeFtmoDailyState(value: Partial<FTMODailyState> | undefined, ftmoTradingDay: string, accountSize: string): FTMODailyState {
+  return {
+    ...createDefaultFtmoDailyState(ftmoTradingDay, accountSize),
+    ...(value ?? {}),
+    ftmoTradingDay: value?.ftmoTradingDay ?? ftmoTradingDay,
+    updatedAt: value?.updatedAt ?? "",
   };
 }
 
@@ -737,6 +787,10 @@ function toCloudPayload(state: PlanningState): CloudPayload {
     tradingDayStatuses: state.tradingDayStatuses,
     tradingDayReopenedAtByDate: state.tradingDayReopenedAtByDate,
     riskControlsByDate: state.riskControlsByDate,
+    controlSessionDate: state.controlSessionDate,
+    ftmoSettings: state.ftmoSettings,
+    localSessionSettings: state.localSessionSettings,
+    ftmoDailyStateByFtmoTradingDay: state.ftmoDailyStateByFtmoTradingDay,
     accountSettings: state.accountSettings,
     emergencyNotes: state.emergencyNotes,
     emergencyLock: state.emergencyLock,

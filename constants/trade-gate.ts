@@ -1,4 +1,4 @@
-import type { AccountSettings, EntryType, MarketIdea, ResultStatus, TechnicalStatus, TradeArgument } from "@/types/trade-gate";
+import type { AccountSettings, EntryType, FTMODailyState, FTMOSettings, LocalSessionSettings, MarketIdea, ResultStatus, TechnicalStatus, TradeArgument } from "@/types/trade-gate";
 
 export const STORAGE_KEY = "trade-gate-state-v1";
 
@@ -55,6 +55,51 @@ export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   personalMaxLoss: "3000",
   profitTarget: "10000",
 };
+
+export const DEFAULT_FTMO_SETTINGS: FTMOSettings = {
+  accountType: "FTMO 2-Step",
+  challengePhase: "Phase 1",
+  accountSize: "100000",
+  ftmoTimezone: "Europe/Prague",
+  ftmoResetTime: "00:00",
+  maxDailyLossPercent: "5",
+  maxLossPercent: "10",
+  phase1ProfitTargetPercent: "10",
+  phase2ProfitTargetPercent: "5",
+  fundedProfitTarget: "0",
+  minimumTradingDays: "0",
+  personalDailyStop: "1000",
+  personalMaxLoss: "3000",
+  personalMaxRiskPerTrade: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
+  safetyBuffer: "250",
+  bestDayRuleEnabled: false,
+  hardBestDayRuleEnforcement: false,
+};
+
+export const DEFAULT_LOCAL_SESSION_SETTINGS: LocalSessionSettings = {
+  localTimezone: "America/Mexico_City",
+  localSessionStart: "07:00",
+  localSessionEnd: "15:00",
+  activeTradingDays: [1, 2, 3, 4, 5],
+  skipWeekends: true,
+  allowAfterHoursTrading: false,
+};
+
+export function createDefaultFtmoDailyState(ftmoTradingDay: string, accountSize = DEFAULT_FTMO_SETTINGS.accountSize): FTMODailyState {
+  return {
+    ftmoTradingDay,
+    startOfDayBalance: accountSize,
+    startOfDayEquity: accountSize,
+    currentBalance: accountSize,
+    currentEquity: accountSize,
+    closedPnlToday: "0",
+    floatingPnl: "0",
+    commissions: "0",
+    swaps: "0",
+    depositsWithdrawalsAdjustment: "0",
+    updatedAt: "",
+  };
+}
 
 const DEFAULT_ARGUMENT_DATE = "2026-01-01T00:00:00.000Z";
 

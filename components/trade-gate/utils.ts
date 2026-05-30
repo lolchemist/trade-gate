@@ -733,6 +733,8 @@ export function calculateScenarioTradeMath(item: SessionPlan) {
 type ScenarioValidationOptions = {
   minimumRr?: number;
   remainingDailyRisk?: number;
+  remainingPersonalDailyRisk?: number;
+  remainingFtmoDailyRiskAfterBuffer?: number;
   personalMaxRiskPerTrade?: number;
 };
 
@@ -751,6 +753,8 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
     math.stopDistance > 0 &&
     math.takeDistance > 0 &&
     (options.remainingDailyRisk === undefined || tradeRisk <= options.remainingDailyRisk) &&
+    (options.remainingPersonalDailyRisk === undefined || tradeRisk <= options.remainingPersonalDailyRisk) &&
+    (options.remainingFtmoDailyRiskAfterBuffer === undefined || tradeRisk <= options.remainingFtmoDailyRiskAfterBuffer) &&
     (options.personalMaxRiskPerTrade === undefined || options.personalMaxRiskPerTrade <= 0 || tradeRisk <= options.personalMaxRiskPerTrade);
 
   if (!item.symbol) reasons.push("не выбран инструмент");
@@ -775,6 +779,8 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   if (math.rr <= 0 && math.hasData) reasons.push("RR не рассчитан");
   if (math.rr > 0 && !rrValid) reasons.push("отношение риск/прибыль хуже чем 1:3");
   if (options.remainingDailyRisk !== undefined && tradeRisk > options.remainingDailyRisk) reasons.push("риск сделки превышает остаток дневного риск-бюджета");
+  if (options.remainingPersonalDailyRisk !== undefined && tradeRisk > options.remainingPersonalDailyRisk) reasons.push("risk exceeds personal daily remaining risk");
+  if (options.remainingFtmoDailyRiskAfterBuffer !== undefined && tradeRisk > options.remainingFtmoDailyRiskAfterBuffer) reasons.push("risk exceeds FTMO remaining daily risk after buffer");
   if (options.personalMaxRiskPerTrade !== undefined && options.personalMaxRiskPerTrade > 0 && tradeRisk > options.personalMaxRiskPerTrade) {
     reasons.push("риск сделки превышает личный максимум на сделку");
   }
@@ -799,6 +805,8 @@ export function getBestValidScenario(
       validation: validateScenarioPlan(plan, {
         ...options,
         remainingDailyRisk: options.getRemainingDailyRiskForPlan ? options.getRemainingDailyRiskForPlan(plan) : options.remainingDailyRisk,
+        remainingPersonalDailyRisk: options.remainingPersonalDailyRisk,
+        remainingFtmoDailyRiskAfterBuffer: options.remainingFtmoDailyRiskAfterBuffer,
       }),
     }))
     .filter((item) => item.validation.valid)

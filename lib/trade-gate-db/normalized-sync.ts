@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, getScenarioTrades } from "@/components/trade-gate/utils";
-import type { DailyRiskBudget, PlanningState, RiskControlState, ScenarioTrade, SessionPlan } from "@/types/trade-gate";
+import type { DailyRiskBudget, FTMODailyState, PlanningState, RiskControlState, ScenarioTrade, SessionPlan } from "@/types/trade-gate";
 
 type JsonRecord = Record<string, unknown>;
 type SupabaseWriteResult = {
@@ -15,6 +15,7 @@ const RISK_CONTROLS_TABLE = "trade_gate_risk_controls";
 const EMOTIONAL_SNAPSHOTS_TABLE = "trade_gate_emotional_snapshots";
 const DAILY_RISK_BUDGETS_TABLE = "trade_gate_daily_risk_budgets";
 const ACCOUNT_SETTINGS_TABLE = "trade_gate_account_settings";
+const FTMO_DAILY_STATES_TABLE = "trade_gate_ftmo_daily_states";
 const INSTRUMENT_IMAGES_TABLE = "trade_gate_instrument_images";
 const JOURNAL_NOTES_TABLE = "trade_gate_journal_notes";
 const SYNC_EVENTS_TABLE = "trade_gate_sync_events";
@@ -28,6 +29,7 @@ export async function persistNormalizedTradeGateState(supabase: SupabaseClient, 
       upsertRiskControls(supabase, state, savedAt),
       upsertDailyRiskBudgets(supabase, state, savedAt),
       upsertAccountSettings(supabase, state, savedAt),
+      upsertFtmoDailyStates(supabase, state, savedAt),
       upsertInstrumentImages(supabase, state, savedAt),
       upsertJournalNotes(supabase, state, savedAt),
     ]);
@@ -241,12 +243,38 @@ async function upsertAccountSettings(supabase: SupabaseClient, state: PlanningSt
         max_loss_limit: Number(state.accountSettings.maxLossLimit) || 0,
         personal_max_loss: Number(state.accountSettings.personalMaxLoss) || 0,
         profit_target: Number(state.accountSettings.profitTarget) || 0,
-        payload: state.accountSettings as unknown as JsonRecord,
+        ftmo_settings: state.ftmoSettings as unknown as JsonRecord,
+        local_session_settings: state.localSessionSettings as unknown as JsonRecord,
+        payload: {
+          accountSettings: state.accountSettings,
+          ftmoSettings: state.ftmoSettings,
+          localSessionSettings: state.localSessionSettings,
+        } as unknown as JsonRecord,
         updated_at: savedAt,
       },
       { onConflict: "sync_key" }
     )
   );
+}
+
+async function upsertFtmoDailyStates(supabase: SupabaseClient, state: PlanningState, savedAt: string) {
+  const rows = Object.values(state.ftmoDailyStateByFtmoTradingDay).map((dailyState: FTMODailyState) => ({
+    sync_key: state.syncKey,
+    ftmo_trading_day: dailyState.ftmoTradingDay,
+    start_of_day_balance: Number(dailyState.startOfDayBalance) || 0,
+    start_of_day_equity: Number(dailyState.startOfDayEquity) || 0,
+    current_balance: Number(dailyState.currentBalance) || 0,
+    current_equity: Number(dailyState.currentEquity) || 0,
+    closed_pnl_today: Number(dailyState.closedPnlToday) || 0,
+    floating_pnl: Number(dailyState.floatingPnl) || 0,
+    commissions: Number(dailyState.commissions) || 0,
+    swaps: Number(dailyState.swaps) || 0,
+    deposits_withdrawals_adjustment: Number(dailyState.depositsWithdrawalsAdjustment) || 0,
+    payload: dailyState as unknown as JsonRecord,
+    updated_at: savedAt,
+  }));
+
+  if (rows.length > 0) await writeOrThrow(supabase.from(FTMO_DAILY_STATES_TABLE).upsert(rows, { onConflict: "sync_key,ftmo_trading_day" }));
 }
 
 async function upsertInstrumentImages(supabase: SupabaseClient, state: PlanningState, savedAt: string) {

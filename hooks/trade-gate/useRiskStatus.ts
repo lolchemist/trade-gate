@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { LOSS_LIMIT } from "@/constants/trade-gate";
 import { getBestValidScenario, validateScenarioPlan } from "@/components/trade-gate/utils";
 import type { BehavioralRiskResult } from "@/hooks/trade-gate/useBehavioralRiskEngine";
-import type { GateResult, ReadinessScores, SessionPlan } from "@/types/trade-gate";
+import type { FTMORiskMetrics, GateResult, ReadinessScores, SessionPlan, TradingSessionStatus } from "@/types/trade-gate";
 
 type UseRiskStatusInput = {
   sleep: number;
@@ -26,6 +26,10 @@ type UseRiskStatusInput = {
   propDailyLossClose: boolean;
   propDailyLossHit: boolean;
   behavioralRisk?: BehavioralRiskResult;
+  ftmoRisk?: FTMORiskMetrics;
+  isWithinTwoHoursOfFtmoReset?: boolean;
+  localSessionStatus?: TradingSessionStatus;
+  allowAfterHoursTrading?: boolean;
 };
 
 export function useRiskStatus(input: UseRiskStatusInput): GateResult {
@@ -51,6 +55,10 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
     propDailyLossClose,
     propDailyLossHit,
     behavioralRisk,
+    ftmoRisk,
+    isWithinTwoHoursOfFtmoReset,
+    localSessionStatus,
+    allowAfterHoursTrading,
   } = input;
 
   return useMemo(
@@ -77,6 +85,10 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
         propDailyLossClose,
         propDailyLossHit,
         behavioralRisk,
+        ftmoRisk,
+        isWithinTwoHoursOfFtmoReset,
+        localSessionStatus,
+        allowAfterHoursTrading,
       }),
     [
       sleep,
@@ -100,6 +112,10 @@ export function useRiskStatus(input: UseRiskStatusInput): GateResult {
       propDailyLossClose,
       propDailyLossHit,
       behavioralRisk,
+      ftmoRisk,
+      isWithinTwoHoursOfFtmoReset,
+      localSessionStatus,
+      allowAfterHoursTrading,
     ]
   );
 }
@@ -126,6 +142,10 @@ function calculateRiskStatus({
   propDailyLossClose,
   propDailyLossHit,
   behavioralRisk,
+  ftmoRisk,
+  isWithinTwoHoursOfFtmoReset,
+  localSessionStatus,
+  allowAfterHoursTrading,
 }: UseRiskStatusInput): GateResult {
   let riskScore = 0;
   const reasons: string[] = [];
@@ -144,7 +164,11 @@ function calculateRiskStatus({
   const dailyLossNumber = Number(dailyLoss);
   const stopsNumber = Number(consecutiveStops);
   const tradesTodayNumber = Number(tradesToday);
-  const scenarioValidationOptions = { personalMaxRiskPerTrade };
+  const scenarioValidationOptions = {
+    personalMaxRiskPerTrade,
+    remainingPersonalDailyRisk: ftmoRisk ? Math.max(0, ftmoRisk.remainingPersonalDailyRisk) : undefined,
+    remainingFtmoDailyRiskAfterBuffer: ftmoRisk ? Math.max(0, ftmoRisk.remainingFtmoDailyRiskAfterBuffer) : undefined,
+  };
   const getRemainingDailyRiskForPlan = (planItem: SessionPlan) => Math.max(0, dailyRiskRemaining + (Number(planItem.tradeRisk) || 0));
   const scenarioValidations = sessionPlansForDate.map((planItem) =>
     validateScenarioPlan(planItem, { ...scenarioValidationOptions, remainingDailyRisk: getRemainingDailyRiskForPlan(planItem) })
@@ -220,6 +244,48 @@ function calculateRiskStatus({
 
   if (propDailyLossClose) {
     warnings.push("Лимит дневной просадки проп-фирмы близко. Снизь риск или остановись.");
+  }
+
+  let ftmoPlannedRiskTooLarge = false;
+  if (ftmoRisk) {
+    if (ftmoRisk.personalDailyStopHit) {
+      riskScore += 80;
+      readiness.discipline = Math.min(readiness.discipline, 10);
+      reasons.push("FTMO: личный дневной стоп исчерпан");
+    }
+    if (ftmoRisk.ftmoDailyLossHit) {
+      riskScore += 100;
+      readiness.discipline = 0;
+      reasons.push("FTMO: дневной лимит после safety buffer исчерпан");
+    }
+    if (ftmoRisk.maxLossBreached) {
+      riskScore += 100;
+      readiness.discipline = 0;
+      reasons.push("FTMO: достигнут максимальный лимит убытка");
+    }
+    if (ftmoRisk.nearFtmoDailyLimit) warnings.push("FTMO: дневной лимит близко, работай только минимальным риском или остановись.");
+    if (isWithinTwoHoursOfFtmoReset) warnings.push("FTMO reset скоро. Открытые позиции могут повлиять на дневную просадку.");
+    if (isWithinTwoHoursOfFtmoReset && ftmoRisk.effectiveDailyLoss < 0) warnings.push("Отрицательный floating PnL около reset уменьшает доступный FTMO daily loss.");
+
+    ftmoPlannedRiskTooLarge = sessionPlansForDate.some((planItem) => {
+      const tradeRisk = Number(planItem.tradeRisk) || 0;
+      return tradeRisk > 0 && (tradeRisk > ftmoRisk.remainingPersonalDailyRisk || tradeRisk > ftmoRisk.remainingFtmoDailyRiskAfterBuffer);
+    });
+    if (ftmoPlannedRiskTooLarge) {
+      riskScore += 50;
+      readiness.discipline = Math.min(readiness.discipline, 15);
+      reasons.push("плановый риск сценария превышает доступный FTMO/личный дневной риск");
+    }
+  }
+
+  if (localSessionStatus === "post_session" && !allowAfterHoursTrading) {
+    riskScore += 8;
+    warnings.push("локальная торговая сессия завершена");
+  }
+
+  if (localSessionStatus === "closed" && !allowAfterHoursTrading) {
+    riskScore += 12;
+    reasons.push("сейчас не активный локальный торговый день");
   }
 
   if (tradesTodayNumber >= 3) {
@@ -332,7 +398,22 @@ function calculateRiskStatus({
   readiness.cognitiveClarity = Math.max(0, Math.min(100, Math.round(readiness.cognitiveClarity)));
   readiness.sessionQuality = Math.max(0, Math.min(100, Math.round(readiness.sessionQuality)));
 
-  const hardLock = isLocked || dailyPnlNumber <= LOSS_LIMIT || dailyLossNumber <= -1000 || personalDailyStopHit || propDailyLossHit || dailyRiskRemaining <= 0 || revenge || !stopSet || validScenarioCount === 0 || stopsNumber >= 2 || behavioralRisk?.state === "RED";
+  const hardLock =
+    isLocked ||
+    dailyPnlNumber <= LOSS_LIMIT ||
+    dailyLossNumber <= -1000 ||
+    personalDailyStopHit ||
+    propDailyLossHit ||
+    dailyRiskRemaining <= 0 ||
+    ftmoRisk?.personalDailyStopHit ||
+    ftmoRisk?.ftmoDailyLossHit ||
+    ftmoRisk?.maxLossBreached ||
+    ftmoPlannedRiskTooLarge ||
+    revenge ||
+    !stopSet ||
+    validScenarioCount === 0 ||
+    stopsNumber >= 2 ||
+    behavioralRisk?.state === "RED";
 
   if (hardLock) {
     return {

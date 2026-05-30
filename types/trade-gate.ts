@@ -17,6 +17,10 @@ export type TradingDayStatus = "active" | "closed" | "locked";
 
 export type AppStatus = "loading" | "ready" | "syncing" | "error";
 
+export type FTMOChallengePhase = "Phase 1" | "Phase 2" | "Funded";
+
+export type TradingSessionStatus = "pre_session" | "active" | "post_session" | "closed";
+
 export type TradeExecutionType = "trade_1" | "re_entry";
 
 export type TradeExecutionStatus = "planned" | "executed" | ResultStatus;
@@ -137,6 +141,72 @@ export interface AccountSettings {
   maxLossLimit: string;
   personalMaxLoss: string;
   profitTarget: string;
+}
+
+export interface FTMOSettings {
+  accountType: "FTMO 2-Step";
+  challengePhase: FTMOChallengePhase;
+  accountSize: string;
+  ftmoTimezone: string;
+  ftmoResetTime: string;
+  maxDailyLossPercent: string;
+  maxLossPercent: string;
+  phase1ProfitTargetPercent: string;
+  phase2ProfitTargetPercent: string;
+  fundedProfitTarget: string;
+  minimumTradingDays: string;
+  personalDailyStop: string;
+  personalMaxLoss: string;
+  personalMaxRiskPerTrade: string;
+  safetyBuffer: string;
+  bestDayRuleEnabled: boolean;
+  hardBestDayRuleEnforcement: boolean;
+}
+
+export interface LocalSessionSettings {
+  localTimezone: string;
+  localSessionStart: string;
+  localSessionEnd: string;
+  activeTradingDays: number[];
+  skipWeekends: boolean;
+  allowAfterHoursTrading: boolean;
+}
+
+export interface FTMODailyState {
+  ftmoTradingDay: string;
+  startOfDayBalance: string | number;
+  startOfDayEquity: string | number;
+  currentBalance: string | number;
+  currentEquity: string | number;
+  closedPnlToday: string | number;
+  floatingPnl: string | number;
+  commissions: string | number;
+  swaps: string | number;
+  depositsWithdrawalsAdjustment: string | number;
+  updatedAt: string;
+}
+
+export interface FTMORiskMetrics {
+  ftmoTradingDay: string;
+  ftmoMaxDailyLossAmount: number;
+  ftmoMaxLossAmount: number;
+  profitTarget: number;
+  currentProfit: number;
+  remainingToTarget: number;
+  profitTargetProgress: number;
+  effectiveDailyLoss: number;
+  effectiveDailyPnl: number;
+  remainingPersonalDailyRisk: number;
+  remainingFtmoDailyRisk: number;
+  remainingFtmoDailyRiskAfterBuffer: number;
+  distanceToMaxLoss: number;
+  personalDailyStopUsed: number;
+  ftmoDailyLossUsed: number;
+  maxLossBreached: boolean;
+  personalDailyStopHit: boolean;
+  ftmoDailyLossHit: boolean;
+  nearFtmoDailyLimit: boolean;
+  safetyBuffer: number;
 }
 
 export interface RiskControlState {
@@ -269,6 +339,10 @@ export interface PlanningState {
   tradingDayStatuses: Record<string, TradingDayStatus>;
   tradingDayReopenedAtByDate: Record<string, string>;
   riskControlsByDate: Record<string, RiskControlState>;
+  controlSessionDate: string;
+  ftmoSettings: FTMOSettings;
+  localSessionSettings: LocalSessionSettings;
+  ftmoDailyStateByFtmoTradingDay: Record<string, FTMODailyState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
   emergencyLock: EmergencyLockState;
@@ -291,6 +365,10 @@ export interface CloudPayload {
   tradingDayStatuses: Record<string, TradingDayStatus>;
   tradingDayReopenedAtByDate: Record<string, string>;
   riskControlsByDate: Record<string, RiskControlState>;
+  controlSessionDate: string;
+  ftmoSettings: FTMOSettings;
+  localSessionSettings: LocalSessionSettings;
+  ftmoDailyStateByFtmoTradingDay: Record<string, FTMODailyState>;
   accountSettings: AccountSettings;
   emergencyNotes: Record<string, string>;
   emergencyLock: EmergencyLockState;

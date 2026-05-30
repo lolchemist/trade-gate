@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Shield, Timer, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +11,9 @@ import { ArchiveDayGroup } from "@/components/trade-gate/ArchiveDayGroup";
 import { BehavioralRiskPanel } from "@/components/trade-gate/BehavioralRiskPanel";
 import { CloudSync } from "@/components/trade-gate/CloudSync";
 import { EmergencyPanel } from "@/components/trade-gate/EmergencyPanel";
+import { FTMORiskCard } from "@/components/trade-gate/FTMORiskCard";
+import { FTMOSessionCard } from "@/components/trade-gate/FTMOSessionCard";
+import { FTMOSettingsCard } from "@/components/trade-gate/FTMOSettingsCard";
 import { HeroStatus, LoadingHero } from "@/components/trade-gate/HeroStatus";
 import { InstrumentCard } from "@/components/trade-gate/InstrumentCard";
 import { LockOverlay } from "@/components/trade-gate/LockOverlay";
@@ -25,6 +28,7 @@ import { MARKET_IDEAS, MAX_INSTRUMENT_IMAGE_BYTES } from "@/components/trade-gat
 import { NumberInput, Rule, SectionTitle, Slider, Toggle } from "@/components/trade-gate/form-controls";
 import { useAnalytics } from "@/hooks/trade-gate/useAnalytics";
 import { useBehavioralRiskEngine } from "@/hooks/trade-gate/useBehavioralRiskEngine";
+import { useFtmoClock } from "@/hooks/trade-gate/useFtmoClock";
 import { useLocalStoragePersistence } from "@/hooks/trade-gate/useLocalStoragePersistence";
 import { usePermissionToTrade } from "@/hooks/trade-gate/usePermissionToTrade";
 import { useRiskStatus } from "@/hooks/trade-gate/useRiskStatus";
@@ -32,6 +36,8 @@ import { useScenarioDiagnostics } from "@/hooks/trade-gate/useScenarioDiagnostic
 import { initialPlanningState, planningReducer, type PlanningAction, useTradeGateState } from "@/hooks/trade-gate/useTradeGateState";
 import { useSupabaseSync } from "@/hooks/trade-gate/useSupabaseSync";
 import { useTodayMetrics } from "@/hooks/trade-gate/useTodayMetrics";
+import { calculateFtmoRiskMetrics, getFtmoDailyState } from "@/lib/ftmoRisk";
+import { getNextValidTradingDate } from "@/lib/ftmoTime";
 import {
   formatPlanDate,
   formatSyncStatus,
@@ -39,7 +45,6 @@ import {
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
-  getNextTradingDateISO,
   getPlanEntryMethod,
   getPlanArgumentLabel,
   getRiskControlsForDate,
@@ -61,6 +66,9 @@ import type {
   RiskControlState,
   ScenarioTrade,
   SessionPlan,
+  FTMODailyState,
+  FTMOSettings,
+  LocalSessionSettings,
   TradeExecutionType,
 } from "@/components/trade-gate/types";
 
@@ -114,6 +122,10 @@ export default function TradeGateApp() {
     tradingDayStatuses,
     tradingDayReopenedAtByDate,
     riskControlsByDate,
+    controlSessionDate: storedControlSessionDate,
+    ftmoSettings,
+    localSessionSettings,
+    ftmoDailyStateByFtmoTradingDay,
     accountSettings,
     emergencyNotes,
     activePlanDate,
@@ -126,11 +138,27 @@ export default function TradeGateApp() {
     initialPlanningState,
   });
   const isTradingStateReady = isHydrated && isCloudLoaded && isInitialSyncComplete;
-  const activeRiskControls = getRiskControlsForDate(riskControlsByDate, activePlanDate);
+  const ftmoClock = useFtmoClock(ftmoSettings, localSessionSettings, isHydrated);
+  const ftmoTradingDay = ftmoClock?.ftmoTradingDay ?? activePlanDate;
+  const localTradingSessionDate = ftmoClock?.localTradingSessionDate ?? activePlanDate;
+  const controlSessionDate = storedControlSessionDate || localTradingSessionDate || activePlanDate;
+  const activeRiskControls = getRiskControlsForDate(riskControlsByDate, controlSessionDate);
+  const ftmoDailyState = getFtmoDailyState(ftmoDailyStateByFtmoTradingDay, ftmoTradingDay, ftmoSettings.accountSize);
+  const ftmoRisk = calculateFtmoRiskMetrics(ftmoSettings, ftmoDailyState);
   const { sleep, anxiety, urge, anger, dailyPnl, dailyLoss, tradesToday, consecutiveStops, plan, newsChecked, stopSet, revenge, lockUntil } = activeRiskControls;
   const activePlanDateLabel = formatPlanDate(activePlanDate);
-  const nextPlanDate = getNextTradingDateISO(activePlanDate);
+  const nextPlanDate = getNextValidTradingDate(activePlanDate, localSessionSettings);
   const nextPlanDateLabel = formatPlanDate(nextPlanDate);
+
+  useEffect(() => {
+    if (!isHydrated || !ftmoClock) return;
+    if (storedControlSessionDate !== ftmoClock.localTradingSessionDate) {
+      dispatchPlanning({ type: "set-control-session-date", controlSessionDate: ftmoClock.localTradingSessionDate });
+    }
+    if (!ftmoDailyStateByFtmoTradingDay[ftmoClock.ftmoTradingDay]) {
+      dispatchPlanning({ type: "set-ftmo-daily-state", ftmoTradingDay: ftmoClock.ftmoTradingDay, field: "ftmoTradingDay", value: ftmoClock.ftmoTradingDay });
+    }
+  }, [dispatchPlanning, ftmoClock, ftmoDailyStateByFtmoTradingDay, isHydrated, storedControlSessionDate]);
   const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
   const chartImageByScenarioId = useMemo(
     () =>
@@ -215,7 +243,7 @@ export default function TradeGateApp() {
   const isTradingDayClosed = tradingDayStatus === "closed";
   const plannedRiskUsed = todayMetrics.plannedRiskUsed;
   const dailyRiskRemaining = todayMetrics.remainingRisk;
-  const emergencyNote = activeRiskControls.emergencyNote ?? emergencyNotes[activePlanDate] ?? "";
+  const emergencyNote = activeRiskControls.emergencyNote ?? emergencyNotes[controlSessionDate] ?? "";
   const personalDailyStopHit = todayMetrics.personalDailyStopHit;
   const personalMaxRiskPerTrade = Number(accountSettings.personalMaxRiskPerTrade) || 0;
   const propDailyLossUsed = todayMetrics.propDailyLossUsed;
@@ -227,9 +255,11 @@ export default function TradeGateApp() {
     () =>
       getBestValidScenario(activePlansForDate, {
         personalMaxRiskPerTrade,
+        remainingPersonalDailyRisk: ftmoRisk.remainingPersonalDailyRisk,
+        remainingFtmoDailyRiskAfterBuffer: ftmoRisk.remainingFtmoDailyRiskAfterBuffer,
         getRemainingDailyRiskForPlan: (planItem) => Math.max(0, dailyRiskRemaining + (Number(planItem.tradeRisk) || 0)),
       }),
-    [activePlansForDate, dailyRiskRemaining, personalMaxRiskPerTrade]
+    [activePlansForDate, dailyRiskRemaining, ftmoRisk.remainingFtmoDailyRiskAfterBuffer, ftmoRisk.remainingPersonalDailyRisk, personalMaxRiskPerTrade]
   );
 
   const sessionPlanReadyCount = useMemo(
@@ -267,6 +297,10 @@ export default function TradeGateApp() {
     propDailyLossClose,
     propDailyLossHit: todayMetrics.propDailyLossHit,
     behavioralRisk,
+    ftmoRisk,
+    isWithinTwoHoursOfFtmoReset: ftmoClock?.isWithinTwoHoursOfReset,
+    localSessionStatus: ftmoClock?.localSession.status,
+    allowAfterHoursTrading: localSessionSettings.allowAfterHoursTrading,
   });
 
   const analytics = useAnalytics({
@@ -289,6 +323,9 @@ export default function TradeGateApp() {
     consecutiveStops: todayMetrics.consecutiveStops,
     bestValidScenario,
     behavioralRisk,
+    ftmoRisk,
+    localSessionStatus: ftmoClock?.localSession.status,
+    allowAfterHoursTrading: localSessionSettings.allowAfterHoursTrading,
   });
 
   const shiftPlanDate = (days: number) => {
@@ -362,14 +399,26 @@ export default function TradeGateApp() {
   };
 
   const updateRiskControl = <K extends RiskControlField>(field: K, value: RiskControlState[K]) => {
-    dispatchPlanning({ type: "set-risk-control", planDate: activePlanDate, field, value });
+    dispatchPlanning({ type: "set-risk-control", planDate: controlSessionDate, field, value });
+  };
+
+  const updateFtmoDailyState = <K extends keyof FTMODailyState>(field: K, value: FTMODailyState[K]) => {
+    dispatchPlanning({ type: "set-ftmo-daily-state", ftmoTradingDay, field, value });
+  };
+
+  const updateFtmoSetting = <K extends keyof FTMOSettings>(field: K, value: FTMOSettings[K]) => {
+    dispatchPlanning({ type: "set-ftmo-setting", field, value });
+  };
+
+  const updateLocalSessionSetting = <K extends keyof LocalSessionSettings>(field: K, value: LocalSessionSettings[K]) => {
+    dispatchPlanning({ type: "set-local-session-setting", field, value });
   };
 
   const resetRiskControls = () => {
     const confirmed = window.confirm("Сбросить контрольные вводы для выбранной торговой сессии? Торговый план и архив не изменятся.");
     if (!confirmed) return;
-    dispatchPlanning({ type: "reset-risk-controls", planDate: activePlanDate });
-    setSyncStatus(`Контрольные вводы для ${activePlanDate} сброшены`);
+    dispatchPlanning({ type: "reset-risk-controls", planDate: controlSessionDate });
+    setSyncStatus(`Контрольные вводы для ${controlSessionDate} сброшены`);
   };
 
   const resetTradingPlan = () => {
@@ -428,7 +477,7 @@ export default function TradeGateApp() {
   const triggerEmergencyLock = () => {
     const until = new Date();
     until.setHours(until.getHours() + 2);
-    dispatchPlanning({ type: "set-emergency-lock", revenge: true, lockUntil: until.toISOString() });
+    dispatchPlanning({ type: "set-emergency-lock", revenge: true, lockUntil: until.toISOString(), planDate: controlSessionDate });
     setSyncStatus("Экстренная блокировка включена на 2 часа");
   };
 
@@ -515,6 +564,24 @@ export default function TradeGateApp() {
                 <div className={`grid gap-5 xl:grid-cols-[1.05fr_0.95fr] ${isLocked && !isTradingDayClosed ? "opacity-80" : ""}`}>
                   <div className="space-y-5">
                     <PermissionCard permission={permission} />
+                    <FTMOSessionCard
+                      activePlanDate={activePlanDate}
+                      ftmoTradingDay={ftmoTradingDay}
+                      localTradingSessionDate={localTradingSessionDate}
+                      localSession={ftmoClock?.localSession}
+                    />
+                    <FTMORiskCard
+                      settings={ftmoSettings}
+                      dailyState={ftmoDailyState}
+                      metrics={ftmoRisk}
+                      ftmoTradingDay={ftmoTradingDay}
+                      ftmoTimeLabel={ftmoClock?.ftmoTimeLabel}
+                      localTimeLabel={ftmoClock?.localTimeLabel}
+                      localResetTimeLabel={ftmoClock?.localResetTimeLabel}
+                      timeUntilReset={ftmoClock?.timeUntilReset}
+                      isWithinTwoHoursOfReset={ftmoClock?.isWithinTwoHoursOfReset}
+                      onDailyStateChange={updateFtmoDailyState}
+                    />
                     {!isTradingDayClosed && <BehavioralRiskPanel behavioralRisk={behavioralRisk} />}
                     <TodayMetricsCard metrics={todayMetrics} />
                     {!isTradingDayClosed && <ScenarioReadinessSummary diagnostics={scenarioDiagnostics} />}
@@ -552,7 +619,7 @@ export default function TradeGateApp() {
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <SectionTitle icon={<Timer className="h-4 w-4" />} title="Состояние" />
-                              <div className="mt-2 text-xs text-neutral-500">Контрольные вводы для сессии: {activePlanDate}</div>
+                              <div className="mt-2 text-xs text-neutral-500">Контрольные вводы для локальной сессии: {controlSessionDate}</div>
                             </div>
                             <Button onClick={resetRiskControls} variant="outline" className="rounded-xl border border-white/10 bg-black/30 text-xs text-neutral-200 hover:bg-white/10">
                               Сбросить контрольные вводы
@@ -579,7 +646,7 @@ export default function TradeGateApp() {
                             <Toggle label="Есть чёткий план сделки" value={plan} setValue={(value) => updateRiskControl("plan", value)} />
                             <Toggle label="Новости проверены" value={newsChecked} setValue={(value) => updateRiskControl("newsChecked", value)} />
                             <Toggle label="Стоп заранее определён" value={stopSet} setValue={(value) => updateRiskControl("stopSet", value)} />
-                            <Toggle label="Есть желание отбиться" value={revenge} setValue={(value) => dispatchPlanning({ type: "set-emergency-lock", revenge: value, lockUntil })} danger />
+                            <Toggle label="Есть желание отбиться" value={revenge} setValue={(value) => dispatchPlanning({ type: "set-emergency-lock", revenge: value, lockUntil, planDate: controlSessionDate })} danger />
                           </div>
                           <div className="grid gap-2 sm:grid-cols-2">
                             <Button
@@ -587,7 +654,7 @@ export default function TradeGateApp() {
                               onClick={() => {
                                 const until = new Date();
                                 until.setHours(until.getHours() + 2);
-                                dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: until.toISOString() });
+                                dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: until.toISOString(), planDate: controlSessionDate });
                               }}
                               variant="outline"
                               className="rounded-xl border border-rose-200/20 bg-rose-200/[0.07] text-rose-100 hover:bg-rose-200/[0.1]"
@@ -596,7 +663,7 @@ export default function TradeGateApp() {
                             </Button>
                             <Button
                               type="button"
-                              onClick={() => dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: "" })}
+                              onClick={() => dispatchPlanning({ type: "set-emergency-lock", revenge, lockUntil: "", planDate: controlSessionDate })}
                               variant="outline"
                               className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10"
                             >
@@ -762,6 +829,13 @@ export default function TradeGateApp() {
               totalLossUsed={totalLossUsed}
               profitProgress={profitProgress}
               onChange={(field, value) => dispatchPlanning({ type: "set-account-setting", field, value })}
+            />
+
+            <FTMOSettingsCard
+              ftmoSettings={ftmoSettings}
+              localSessionSettings={localSessionSettings}
+              onFtmoChange={updateFtmoSetting}
+              onLocalSessionChange={updateLocalSessionSetting}
             />
 
             <TradeArgumentLibraryCard

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { calculatePermission, getBestValidScenario } from "@/components/trade-gate/utils";
 import type { BehavioralRiskResult } from "@/hooks/trade-gate/useBehavioralRiskEngine";
-import type { GateResult, PermissionToTrade } from "@/types/trade-gate";
+import type { FTMORiskMetrics, GateResult, PermissionToTrade, TradingSessionStatus } from "@/types/trade-gate";
 
 const LOADING_PERMISSION: PermissionToTrade = {
   permission: "denied",
@@ -34,6 +34,9 @@ type UsePermissionToTradeInput = {
   consecutiveStops: number;
   bestValidScenario: ReturnType<typeof getBestValidScenario>;
   behavioralRisk?: BehavioralRiskResult;
+  ftmoRisk?: FTMORiskMetrics;
+  localSessionStatus?: TradingSessionStatus;
+  allowAfterHoursTrading?: boolean;
 };
 
 export function usePermissionToTrade({
@@ -47,13 +50,28 @@ export function usePermissionToTrade({
   consecutiveStops,
   bestValidScenario,
   behavioralRisk,
+  ftmoRisk,
+  localSessionStatus,
+  allowAfterHoursTrading,
 }: UsePermissionToTradeInput): PermissionToTrade {
   return useMemo(() => {
     if (!isReady) return LOADING_PERMISSION;
     if (isTradingDayClosed) return CLOSED_DAY_PERMISSION;
+    if (ftmoRisk?.ftmoDailyLossHit || ftmoRisk?.personalDailyStopHit || ftmoRisk?.maxLossBreached) {
+      return {
+        permission: "denied",
+        mode: "locked",
+        maxAllowedRisk: 0,
+        maxAllowedLot: 0,
+        maxAdditionalTrades: 0,
+        reEntryAllowed: false,
+        instruction: "FTMO/личный риск исчерпан. Новые сделки запрещены.",
+      };
+    }
     const scenarioRisk = Number(bestValidScenario?.plan.tradeRisk) || 0;
     const scenarioLot = bestValidScenario?.validation.math.lot ?? 0;
     const scaleLot = (allowedRisk: number) => (scenarioRisk > 0 && scenarioLot > 0 ? scenarioLot * (allowedRisk / scenarioRisk) : 0);
+    const ftmoAllowedRisk = ftmoRisk ? Math.max(0, Math.min(ftmoRisk.remainingPersonalDailyRisk, ftmoRisk.remainingFtmoDailyRiskAfterBuffer)) : Number.POSITIVE_INFINITY;
 
     if (behavioralRisk?.state === "RED") {
       return {
@@ -80,7 +98,7 @@ export function usePermissionToTrade({
     }
 
     if (behavioralRisk?.state === "YELLOW") {
-      const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, behavioralRisk.maxAllowedRisk));
+      const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, scenarioRisk || dailyRiskRemaining, behavioralRisk.maxAllowedRisk));
       return {
         permission: "reduced",
         mode: "reduced",
@@ -92,12 +110,24 @@ export function usePermissionToTrade({
       };
     }
 
+    if ((localSessionStatus === "post_session" || localSessionStatus === "closed") && !allowAfterHoursTrading) {
+      return {
+        permission: localSessionStatus === "closed" ? "denied" : "reduced",
+        mode: localSessionStatus === "closed" ? "sim_only" : "reduced",
+        maxAllowedRisk: localSessionStatus === "closed" ? 0 : Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, 250)),
+        maxAllowedLot: localSessionStatus === "closed" ? 0 : scaleLot(Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, 250))),
+        maxAdditionalTrades: localSessionStatus === "closed" ? 0 : 1,
+        reEntryAllowed: false,
+        instruction: localSessionStatus === "closed" ? "Сейчас не торговый день по локальной сессии. Только разбор или симуляция." : "Локальная сессия закончилась. Только сниженный риск, без re-entry.",
+      };
+    }
+
     return calculatePermission({
       status: isLocked ? "LOCKED" : riskResult.status,
       executionReadiness: riskResult.readiness.execution,
       emotionalReadiness: riskResult.readiness.emotional,
       disciplineReadiness: riskResult.readiness.discipline,
-      dailyRiskRemaining,
+      dailyRiskRemaining: Math.min(dailyRiskRemaining, ftmoAllowedRisk),
       revengeDetectorScore: riskResult.revengeDetectorScore,
       personalDailyStopHit,
       tradesToday,
@@ -105,5 +135,5 @@ export function usePermissionToTrade({
       bestScenarioRisk: scenarioRisk,
       bestScenarioLot: scenarioLot,
     });
-  }, [isReady, isTradingDayClosed, isLocked, riskResult, dailyRiskRemaining, personalDailyStopHit, tradesToday, consecutiveStops, bestValidScenario, behavioralRisk]);
+  }, [isReady, isTradingDayClosed, isLocked, riskResult, dailyRiskRemaining, personalDailyStopHit, tradesToday, consecutiveStops, bestValidScenario, behavioralRisk, ftmoRisk, localSessionStatus, allowAfterHoursTrading]);
 }

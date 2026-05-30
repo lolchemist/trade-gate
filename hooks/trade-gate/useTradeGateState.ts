@@ -1,5 +1,5 @@
 import { useReducer } from "react";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_TRADE_ARGUMENTS } from "@/constants/trade-gate";
+import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_TRADE_ARGUMENTS } from "@/constants/trade-gate";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import {
   createCustomTradeArgument,
@@ -24,6 +24,9 @@ import type {
   CarryScenarioMode,
   EditablePlanField,
   EditableTradeField,
+  FTMODailyState,
+  FTMOSettings,
+  LocalSessionSettings,
   PlanningState,
   RiskControlField,
   RiskControlState,
@@ -49,6 +52,12 @@ export const initialPlanningState: PlanningState = {
   tradingDayReopenedAtByDate: {},
   riskControlsByDate: {
     [initialPlanDate]: createDefaultRiskControls(),
+  },
+  controlSessionDate: initialPlanDate,
+  ftmoSettings: DEFAULT_FTMO_SETTINGS,
+  localSessionSettings: DEFAULT_LOCAL_SESSION_SETTINGS,
+  ftmoDailyStateByFtmoTradingDay: {
+    [initialPlanDate]: createDefaultFtmoDailyState(initialPlanDate),
   },
   accountSettings: DEFAULT_ACCOUNT_SETTINGS,
   emergencyNotes: {},
@@ -81,10 +90,14 @@ export type PlanningAction =
   | { type: "set-daily-risk-budget"; planDate: string; budgetUsd: string }
   | { type: "set-trading-day-status"; planDate: string; status: TradingDayStatus }
   | { type: "set-risk-control"; planDate: string; field: RiskControlField; value: RiskControlState[RiskControlField] }
+  | { type: "set-control-session-date"; controlSessionDate: string }
+  | { type: "set-ftmo-setting"; field: keyof FTMOSettings; value: FTMOSettings[keyof FTMOSettings] }
+  | { type: "set-local-session-setting"; field: keyof LocalSessionSettings; value: LocalSessionSettings[keyof LocalSessionSettings] }
+  | { type: "set-ftmo-daily-state"; ftmoTradingDay: string; field: keyof FTMODailyState; value: FTMODailyState[keyof FTMODailyState] }
   | { type: "reset-risk-controls"; planDate: string }
   | { type: "set-account-setting"; field: keyof AccountSettings; value: string }
   | { type: "set-emergency-note"; planDate: string; value: string }
-  | { type: "set-emergency-lock"; revenge: boolean; lockUntil: string }
+  | { type: "set-emergency-lock"; revenge: boolean; lockUntil: string; planDate?: string }
   | { type: "add-trade-argument"; name: string }
   | { type: "update-trade-argument"; id: string; name: string }
   | { type: "delete-trade-argument"; id: string }
@@ -114,6 +127,10 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         tradingDayStatuses: hydratedTradingDayStatuses,
         tradingDayReopenedAtByDate: action.payload.tradingDayReopenedAtByDate ?? state.tradingDayReopenedAtByDate,
         riskControlsByDate: action.payload.riskControlsByDate ?? state.riskControlsByDate,
+        controlSessionDate: action.payload.controlSessionDate ?? state.controlSessionDate,
+        ftmoSettings: action.payload.ftmoSettings ?? state.ftmoSettings,
+        localSessionSettings: action.payload.localSessionSettings ?? state.localSessionSettings,
+        ftmoDailyStateByFtmoTradingDay: action.payload.ftmoDailyStateByFtmoTradingDay ?? state.ftmoDailyStateByFtmoTradingDay,
         accountSettings: action.payload.accountSettings ?? state.accountSettings,
         emergencyNotes: action.payload.emergencyNotes ?? state.emergencyNotes,
         emergencyLock: action.payload.emergencyLock ?? state.emergencyLock,
@@ -127,6 +144,12 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
         ...state,
         activePlanDate: action.activePlanDate,
         riskControlsByDate: ensureRiskControlsForDate(state.riskControlsByDate, action.activePlanDate),
+      };
+    case "set-control-session-date":
+      return {
+        ...state,
+        controlSessionDate: action.controlSessionDate,
+        riskControlsByDate: ensureRiskControlsForDate(state.riskControlsByDate, action.controlSessionDate),
       };
     case "set-sync-key":
       return { ...state, syncKey: action.syncKey };
@@ -275,6 +298,25 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             : state.emergencyLock,
       };
     }
+    case "set-ftmo-setting":
+      return { ...state, ftmoSettings: { ...state.ftmoSettings, [action.field]: action.value } };
+    case "set-local-session-setting":
+      return { ...state, localSessionSettings: { ...state.localSessionSettings, [action.field]: action.value } };
+    case "set-ftmo-daily-state": {
+      const currentState = state.ftmoDailyStateByFtmoTradingDay[action.ftmoTradingDay] ?? createDefaultFtmoDailyState(action.ftmoTradingDay, state.ftmoSettings.accountSize);
+      return {
+        ...state,
+        ftmoDailyStateByFtmoTradingDay: {
+          ...state.ftmoDailyStateByFtmoTradingDay,
+          [action.ftmoTradingDay]: {
+            ...currentState,
+            ftmoTradingDay: action.ftmoTradingDay,
+            [action.field]: action.value,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }
     case "reset-risk-controls":
       return {
         ...state,
@@ -297,20 +339,22 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           },
         },
       };
-    case "set-emergency-lock":
+    case "set-emergency-lock": {
+      const emergencyPlanDate = action.planDate ?? state.controlSessionDate ?? state.activePlanDate;
       return {
         ...state,
         emergencyLock: { revenge: action.revenge, lockUntil: action.lockUntil },
         riskControlsByDate: {
           ...state.riskControlsByDate,
-          [state.activePlanDate]: {
-            ...getRiskControlsForDate(state.riskControlsByDate, state.activePlanDate),
+          [emergencyPlanDate]: {
+            ...getRiskControlsForDate(state.riskControlsByDate, emergencyPlanDate),
             revenge: action.revenge,
             lockUntil: action.lockUntil,
             updatedAt: new Date().toISOString(),
           },
         },
       };
+    }
     case "add-trade-argument": {
       const name = action.name.trim();
       if (!name || state.tradeArguments.some((argument) => argument.name.trim().toLowerCase() === name.toLowerCase())) return state;
