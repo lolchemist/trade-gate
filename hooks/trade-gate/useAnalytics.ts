@@ -3,6 +3,7 @@ import { DEFAULT_DAILY_RISK_BUDGET } from "@/constants/trade-gate";
 import { calculateExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { calculateScenarioQuality } from "@/hooks/trade-gate/useScenarioQuality";
 import {
+  calculateScenarioExecutionRisk,
   calculateScenarioTradeMath,
   getExecutedScenarioTrades,
   getPlanEntryMethod,
@@ -278,7 +279,8 @@ function toAnalyticsFacts(plan: ArchivedPlan, riskControlsByDate: Record<string,
     const executedAt = trade.executedAt || plan.closedAt || plan.archivedAt || "";
     const parsedDate = Date.parse(executedAt);
     const executionHour = Number.isFinite(parsedDate) ? new Date(parsedDate).getHours() : undefined;
-    const actualRisk = Number(trade.actualRisk) || Number(plan.tradeRisk) || 0;
+    const calculatedRisk = calculateScenarioExecutionRisk(plan, trade).risk;
+    const actualRisk = Number(trade.actualRisk) || calculatedRisk || Number(plan.tradeRisk) || 0;
     const actualRr = Number(trade.actualRr) || (actualRisk > 0 ? Number((pnl / actualRisk).toFixed(2)) : 0);
 
     return {

@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { persistNormalizedTradeGateState } from "@/lib/trade-gate-db/normalized-sync";
 import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
-import { createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields } from "./utils";
+import { calculateScenarioExecutionRisk, createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields, withCalculatedActualRisk } from "./utils";
 import type { ArchivedPlan, FTMODailyState, FTMOSettings, LocalSessionSettings, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
 type CloudStateRow = {
@@ -721,18 +721,22 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArgu
 
 function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): ScenarioTrade[] {
   const rawTrades = Array.isArray(plan.trades) ? plan.trades : [];
-  const normalizedTrades = rawTrades.map((trade, index) => ({
-    ...createScenarioTrade({ ...fallbackPlan, ...plan }, index === 0 ? "trade_1" : "re_entry", trade.id || `legacy-trade-${plan.id}-${index}`),
-    ...trade,
-    executionType: trade.executionType ?? (index === 0 ? "trade_1" : "re_entry"),
-    status: trade.status ?? "planned",
-    technical: trade.technical ?? plan.technical ?? "yes",
-  }));
+  const planForMath = { ...fallbackPlan, ...plan };
+  const normalizedTrades = rawTrades.map((trade, index) => {
+    const normalizedTrade = {
+      ...createScenarioTrade(planForMath, index === 0 ? "trade_1" : "re_entry", trade.id || `legacy-trade-${plan.id}-${index}`),
+      ...trade,
+      executionType: trade.executionType ?? (index === 0 ? "trade_1" : "re_entry"),
+      status: trade.status ?? "planned",
+      technical: trade.technical ?? plan.technical ?? "yes",
+    };
+    return calculateExecutionRiskIfPossible(planForMath, normalizedTrade);
+  });
 
   if (normalizedTrades.length > 0) return normalizedTrades;
 
   if (plan.resultStatus && plan.resultStatus !== "not_taken") {
-    const migratedTrade = createScenarioTrade({ ...fallbackPlan, ...plan }, "trade_1", `legacy-trade-${plan.id}`);
+    const migratedTrade = createScenarioTrade(planForMath, "trade_1", `legacy-trade-${plan.id}`);
     return [
       {
         ...migratedTrade,
@@ -747,6 +751,10 @@ function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): 
   }
 
   return [];
+}
+
+function calculateExecutionRiskIfPossible(plan: SessionPlan, trade: ScenarioTrade): ScenarioTrade {
+  return calculateScenarioExecutionRisk(plan, trade).risk > 0 ? withCalculatedActualRisk(plan, trade) : trade;
 }
 
 function normalizeArgumentIds(plan: SessionPlan, legacySetup: string, tradeArguments: TradeArgument[]) {

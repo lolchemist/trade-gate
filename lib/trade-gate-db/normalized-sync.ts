@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, getScenarioTrades } from "@/components/trade-gate/utils";
+import { calculateScenarioExecutionRisk, calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, getScenarioTrades } from "@/components/trade-gate/utils";
 import type { DailyRiskBudget, FTMODailyState, PlanningState, RiskControlState, ScenarioTrade, SessionPlan } from "@/types/trade-gate";
 
 type JsonRecord = Record<string, unknown>;
@@ -132,25 +132,29 @@ function createExecutionRows(syncKey: string, plan: SessionPlan, savedAt: string
   const trades = getScenarioTrades(plan);
   const normalizedTrades = trades.length > 0 ? trades : createLegacyExecution(plan);
 
-  return normalizedTrades.map((trade, index) => ({
-    sync_key: syncKey,
-    scenario_id: String(plan.id),
-    execution_id: trade.id || `legacy-${plan.id}-${index}`,
-    execution_type: trade.executionType,
-    status: trade.status,
-    actual_entry: trade.actualEntry || null,
-    actual_exit: trade.actualExit || null,
-    actual_size: Number(trade.actualSize) || 0,
-    actual_stop: trade.actualStop || null,
-    actual_take: trade.actualTake || null,
-    actual_risk: Number(trade.actualRisk) || Number(plan.tradeRisk) || 0,
-    actual_result: Number(trade.actualResult) || 0,
-    actual_rr: Number(trade.actualRr) || 0,
-    technical_status: trade.technical,
-    executed_at: trade.executedAt || plan.closedAt || plan.archivedAt || null,
-    payload: trade as unknown as JsonRecord,
-    updated_at: savedAt,
-  }));
+  return normalizedTrades.map((trade, index) => {
+    const calculatedRisk = calculateScenarioExecutionRisk(plan, trade).risk;
+
+    return {
+      sync_key: syncKey,
+      scenario_id: String(plan.id),
+      execution_id: trade.id || `legacy-${plan.id}-${index}`,
+      execution_type: trade.executionType,
+      status: trade.status,
+      actual_entry: trade.actualEntry || null,
+      actual_exit: trade.actualExit || null,
+      actual_size: Number(trade.actualSize) || 0,
+      actual_stop: trade.actualStop || null,
+      actual_take: trade.actualTake || null,
+      actual_risk: Number(trade.actualRisk) || calculatedRisk || Number(plan.tradeRisk) || 0,
+      actual_result: Number(trade.actualResult) || 0,
+      actual_rr: Number(trade.actualRr) || 0,
+      technical_status: trade.technical,
+      executed_at: trade.executedAt || plan.closedAt || plan.archivedAt || null,
+      payload: trade as unknown as JsonRecord,
+      updated_at: savedAt,
+    };
+  });
 }
 
 function createLegacyExecution(plan: SessionPlan): ScenarioTrade[] {

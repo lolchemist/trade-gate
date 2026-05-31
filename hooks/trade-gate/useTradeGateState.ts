@@ -17,6 +17,7 @@ import {
   mergeTradingDayStatuses,
   syncLegacyResultFields,
   validateScenarioPlan,
+  withCalculatedActualRisk,
 } from "@/components/trade-gate/utils";
 import type {
   AccountSettings,
@@ -162,7 +163,8 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           if (plan.id !== action.id) return plan;
           if (action.field === "symbol") {
             const symbol = normalizeInstrumentSymbol(String(action.value));
-            return { ...plan, symbol, tradePointValue: getPointValuePerLot(symbol) };
+            const nextPlan = { ...plan, symbol, tradePointValue: getPointValuePerLot(symbol) };
+            return recalculateExecutionRisks(nextPlan);
           }
           if (action.field === "argumentIds" || action.field === "setupIds") {
             const argumentIds = dedupeTextList(Array.isArray(action.value) ? action.value : []).slice(0, 5);
@@ -175,7 +177,8 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           if (action.field === "arguments") {
             return { ...plan, arguments: normalizeScenarioArguments(action.value) };
           }
-          return { ...plan, [action.field]: action.value } as SessionPlan;
+          const nextPlan = { ...plan, [action.field]: action.value } as SessionPlan;
+          return action.field === "tradePointValue" ? recalculateExecutionRisks(nextPlan) : nextPlan;
         }),
       };
     case "add-trade":
@@ -196,10 +199,14 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           const trades = (Array.isArray(plan.trades) ? plan.trades : []).map((trade) => {
             if (trade.id !== action.tradeId) return trade;
             const nextTrade = { ...trade, [action.field]: action.value } as ScenarioTrade;
-            if (action.field === "status" && action.value !== "planned" && !nextTrade.executedAt) {
-              return { ...nextTrade, executedAt: new Date().toISOString() };
+            const tradeWithRisk =
+              action.field === "actualEntry" || action.field === "actualStop" || action.field === "actualSize"
+                ? withCalculatedActualRisk(plan, nextTrade)
+                : nextTrade;
+            if (action.field === "status" && action.value !== "planned" && !tradeWithRisk.executedAt) {
+              return { ...tradeWithRisk, executedAt: new Date().toISOString() };
             }
-            return nextTrade;
+            return tradeWithRisk;
           });
           return syncLegacyResultFields({ ...plan, trades });
         }),
@@ -451,6 +458,11 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
 function ensureRiskControlsForDate(riskControlsByDate: PlanningState["riskControlsByDate"], planDate: string) {
   if (riskControlsByDate[planDate]) return riskControlsByDate;
   return { ...riskControlsByDate, [planDate]: createDefaultRiskControls({ updatedAt: new Date().toISOString() }) };
+}
+
+function recalculateExecutionRisks(plan: SessionPlan): SessionPlan {
+  if (!Array.isArray(plan.trades) || plan.trades.length === 0) return plan;
+  return { ...plan, trades: plan.trades.map((trade) => withCalculatedActualRisk(plan, trade)) };
 }
 
 function preserveScenarioLabels(plan: SessionPlan, tradeArguments: TradeArgument[]): SessionPlan {

@@ -129,7 +129,7 @@ export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_
 export function createScenarioTrade(plan: SessionPlan, executionType: TradeExecutionType = "trade_1", id = createTradeId()): ScenarioTrade {
   const math = calculateScenarioTradeMath(plan);
 
-  return {
+  return withCalculatedActualRisk(plan, {
     id,
     executionType,
     status: "planned",
@@ -138,14 +138,14 @@ export function createScenarioTrade(plan: SessionPlan, executionType: TradeExecu
     actualSize: math.lot > 0 ? math.lot.toFixed(2) : "",
     actualStop: plan.tradeStop,
     actualTake: plan.tradeTake,
-    actualRisk: plan.tradeRisk,
+    actualRisk: "",
     actualResult: "",
     actualRr: "",
     executionNotes: "",
     executedAt: "",
     technical: "yes",
     slippage: "",
-  };
+  });
 }
 
 export function createTradeId() {
@@ -728,6 +728,33 @@ export function calculateScenarioTradeMath(item: SessionPlan) {
   const hasData = Boolean(item.tradeEntry && item.tradeStop && item.tradeTake && item.tradeRisk && item.tradePointValue);
 
   return { stopDistance, takeDistance, lot, potential, rr, hasData };
+}
+
+export function calculateScenarioExecutionRisk(item: SessionPlan, trade: ScenarioTrade) {
+  const entry = Number(trade.actualEntry);
+  const stop = Number(trade.actualStop);
+  const plannedLot = calculateScenarioTradeMath(item).lot;
+  const size = Number(trade.actualSize) || plannedLot;
+  const pointValue = Number(item.tradePointValue);
+  const stopDistance = Math.abs(entry - stop);
+  const risk = stopDistance > 0 && size > 0 && pointValue > 0 ? stopDistance * size * pointValue : 0;
+  const hasData = Boolean(trade.actualEntry && trade.actualStop && size > 0 && item.tradePointValue);
+
+  return { stopDistance, risk, hasData };
+}
+
+export function withCalculatedActualRisk(item: SessionPlan, trade: ScenarioTrade): ScenarioTrade {
+  const { risk } = calculateScenarioExecutionRisk(item, trade);
+
+  return {
+    ...trade,
+    actualRisk: formatCalculatedRiskValue(risk),
+  };
+}
+
+function formatCalculatedRiskValue(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return Number(value.toFixed(2)).toString();
 }
 
 type ScenarioValidationOptions = {

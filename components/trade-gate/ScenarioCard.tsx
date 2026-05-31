@@ -8,7 +8,7 @@ import { EntryMethodSelector } from "./EntryMethodSelector";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
-import { calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
+import { calculateScenarioExecutionRisk, calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -455,7 +455,7 @@ function ExecutionTradeCard({
       <div className="mt-3 grid gap-3 md:grid-cols-4">
         <NumberInput label="Факт стоп" value={trade.actualStop} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualStop", value)} />
         <NumberInput label="Факт тейк" value={trade.actualTake} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualTake", value)} />
-        <NumberInput label="Факт риск, $" value={trade.actualRisk} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualRisk", value)} />
+        <CalculatedActualRiskField scenario={scenario} trade={trade} />
         <NumberInput label="Финрезультат, $" value={trade.actualResult} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualResult", value)} />
       </div>
 
@@ -473,6 +473,21 @@ function ExecutionTradeCard({
           onChange={(value) => onUpdateTrade(scenarioId, trade.id, "executionNotes", value)}
           placeholder="Что реально произошло: качество входа, эмоции, отклонения от плана"
         />
+      </div>
+    </div>
+  );
+}
+
+function CalculatedActualRiskField({ scenario, trade }: { scenario: SessionPlan; trade: ScenarioTrade }) {
+  const { hasData, risk } = calculateScenarioExecutionRisk(scenario, trade);
+  const displayRisk = Number(trade.actualRisk) || risk;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 shadow-inner shadow-black/20">
+      <div className="mb-1 text-sm text-neutral-300">Факт риск, $</div>
+      <div className="text-sm font-semibold text-neutral-100">{displayRisk > 0 ? `$${displayRisk.toFixed(2)}` : "—"}</div>
+      <div className="mt-1 text-[0.68rem] uppercase tracking-[0.16em] text-neutral-500">
+        {hasData ? "Авто: вход × стоп × лот × пункт" : "Заполни факт вход, стоп и размер"}
       </div>
     </div>
   );

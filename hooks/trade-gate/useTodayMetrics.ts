@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { calculatePlannedRisk, getDailyRiskBudget, getExecutedScenarioTrades, isScenarioClosed } from "@/components/trade-gate/utils";
+import { calculatePlannedRisk, calculateScenarioExecutionRisk, getDailyRiskBudget, getExecutedScenarioTrades, isScenarioClosed } from "@/components/trade-gate/utils";
 import type { AccountSettings, ArchivedPlan, DailyRiskBudget, ScenarioTrade, SessionPlan, TodayMetrics } from "@/types/trade-gate";
 
 const executedStatuses = new Set<ScenarioTrade["status"]>(["executed", "take", "stop", "manual_profit", "manual_loss", "breakeven"]);
@@ -27,8 +27,8 @@ function calculateTodayMetrics(
   const activePlansForDate = sessionPlans.filter((plan) => plan.planDate === activePlanDate);
   const archivedForDate = archivedPlans.filter((plan) => plan.planDate === activePlanDate);
   const closedPlansForDate = activePlansForDate.filter(isScenarioClosed);
-  const activeExecutedTrades = activePlansForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, archivedAt: trade.executedAt || plan.closedAt || "", planId: plan.id })));
-  const archivedExecutedTrades = archivedForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, archivedAt: trade.executedAt || plan.archivedAt, planId: plan.id })));
+  const activeExecutedTrades = activePlansForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, plan, archivedAt: trade.executedAt || plan.closedAt || "", planId: plan.id })));
+  const archivedExecutedTrades = archivedForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, plan, archivedAt: trade.executedAt || plan.archivedAt, planId: plan.id })));
   const executedTrades = [...activeExecutedTrades, ...archivedExecutedTrades].filter((item) => executedStatuses.has(item.trade.status));
   const dailyRiskBudget = getDailyRiskBudget(dailyRiskBudgets, activePlanDate);
   const budget = Number(dailyRiskBudget.budgetUsd) || 0;
@@ -40,7 +40,8 @@ function calculateTodayMetrics(
   }, 0);
   const activeRiskExposureUsed = activeExecutedTrades.reduce((total, item) => {
     if (item.trade.status !== "executed") return total;
-    return total + Math.max(0, Number(item.trade.actualRisk) || 0);
+    const calculatedRisk = calculateScenarioExecutionRisk(item.plan, item.trade).risk;
+    return total + Math.max(0, Number(item.trade.actualRisk) || calculatedRisk || 0);
   }, 0);
   const riskUsedTotal = realizedLossUsed + activeRiskExposureUsed;
   const remainingRisk = budget - riskUsedTotal;
