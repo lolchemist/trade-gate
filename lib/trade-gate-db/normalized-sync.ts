@@ -133,7 +133,7 @@ function createExecutionRows(syncKey: string, plan: SessionPlan, savedAt: string
   const normalizedTrades = trades.length > 0 ? trades : createLegacyExecution(plan);
 
   return normalizedTrades.map((trade, index) => {
-    const calculatedRisk = calculateScenarioExecutionRisk(plan, trade).risk;
+    const executionMath = calculateScenarioExecutionRisk(plan, trade);
 
     return {
       sync_key: syncKey,
@@ -146,9 +146,9 @@ function createExecutionRows(syncKey: string, plan: SessionPlan, savedAt: string
       actual_size: Number(trade.actualSize) || 0,
       actual_stop: trade.actualStop || null,
       actual_take: trade.actualTake || null,
-      actual_risk: Number(trade.actualRisk) || calculatedRisk || Number(plan.tradeRisk) || 0,
+      actual_risk: Number(trade.actualRisk) || executionMath.risk || Number(plan.tradeRisk) || 0,
       actual_result: Number(trade.actualResult) || 0,
-      actual_rr: Number(trade.actualRr) || 0,
+      actual_rr: Number(trade.actualRr) || executionMath.rr || 0,
       technical_status: trade.technical,
       executed_at: trade.executedAt || plan.closedAt || plan.archivedAt || null,
       payload: trade as unknown as JsonRecord,

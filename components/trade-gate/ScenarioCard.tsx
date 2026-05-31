@@ -452,15 +452,16 @@ function ExecutionTradeCard({
         <NumberInput label="Факт размер" value={trade.actualSize} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualSize", value)} />
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-4">
+      <div className="mt-3 grid gap-3 md:grid-cols-5">
         <NumberInput label="Факт стоп" value={trade.actualStop} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualStop", value)} />
         <NumberInput label="Факт тейк" value={trade.actualTake} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualTake", value)} />
-        <CalculatedActualRiskField scenario={scenario} trade={trade} />
+        <CalculatedExecutionMetric scenario={scenario} trade={trade} kind="risk" />
+        <CalculatedExecutionMetric scenario={scenario} trade={trade} kind="potential" />
         <NumberInput label="Финрезультат, $" value={trade.actualResult} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualResult", value)} />
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-4">
-        <NumberInput label="Факт R:R" value={trade.actualRr} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualRr", value)} />
+        <CalculatedExecutionMetric scenario={scenario} trade={trade} kind="rr" />
         <NumberInput label="Отклонение / slippage" value={trade.slippage} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "slippage", value)} />
         <SelectInput label="Техничность исполнения" value={trade.technical} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "technical", value)} options={technicalOptions} />
         <TextInput label="Время исполнения" value={trade.executedAt} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "executedAt", value)} />
@@ -478,16 +479,42 @@ function ExecutionTradeCard({
   );
 }
 
-function CalculatedActualRiskField({ scenario, trade }: { scenario: SessionPlan; trade: ScenarioTrade }) {
-  const { hasData, risk } = calculateScenarioExecutionRisk(scenario, trade);
+function CalculatedExecutionMetric({ scenario, trade, kind }: { scenario: SessionPlan; trade: ScenarioTrade; kind: "risk" | "potential" | "rr" }) {
+  const { hasData, hasTakeData, potential, risk, rr } = calculateScenarioExecutionRisk(scenario, trade);
   const displayRisk = Number(trade.actualRisk) || risk;
+  const displayRr = Number(trade.actualRr) || rr;
+  const label = kind === "risk" ? "Факт риск, $" : kind === "potential" ? "Ожидаемый тейк, $" : "Факт R:R";
+  const value =
+    kind === "risk"
+      ? displayRisk > 0
+        ? `$${displayRisk.toFixed(2)}`
+        : "—"
+      : kind === "potential"
+        ? potential > 0
+          ? `$${potential.toFixed(2)}`
+          : "—"
+        : displayRr > 0
+          ? `1:${displayRr.toFixed(2)}`
+          : "—";
+  const hint =
+    kind === "risk"
+      ? hasData
+        ? "Авто: вход × стоп × лот × пункт"
+        : "Заполни факт вход, стоп и размер"
+      : kind === "potential"
+        ? hasTakeData
+          ? "Авто: вход × тейк × лот × пункт"
+          : "Заполни факт вход, тейк и размер"
+        : hasData && hasTakeData
+          ? "Авто: тейк / риск"
+          : "Нужны факт стоп и тейк";
 
   return (
     <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 shadow-inner shadow-black/20">
-      <div className="mb-1 text-sm text-neutral-300">Факт риск, $</div>
-      <div className="text-sm font-semibold text-neutral-100">{displayRisk > 0 ? `$${displayRisk.toFixed(2)}` : "—"}</div>
+      <div className="mb-1 text-sm text-neutral-300">{label}</div>
+      <div className="text-sm font-semibold text-neutral-100">{value}</div>
       <div className="mt-1 text-[0.68rem] uppercase tracking-[0.16em] text-neutral-500">
-        {hasData ? "Авто: вход × стоп × лот × пункт" : "Заполни факт вход, стоп и размер"}
+        {hint}
       </div>
     </div>
   );

@@ -279,9 +279,9 @@ function toAnalyticsFacts(plan: ArchivedPlan, riskControlsByDate: Record<string,
     const executedAt = trade.executedAt || plan.closedAt || plan.archivedAt || "";
     const parsedDate = Date.parse(executedAt);
     const executionHour = Number.isFinite(parsedDate) ? new Date(parsedDate).getHours() : undefined;
-    const calculatedRisk = calculateScenarioExecutionRisk(plan, trade).risk;
-    const actualRisk = Number(trade.actualRisk) || calculatedRisk || Number(plan.tradeRisk) || 0;
-    const actualRr = Number(trade.actualRr) || (actualRisk > 0 ? Number((pnl / actualRisk).toFixed(2)) : 0);
+    const executionMath = calculateScenarioExecutionRisk(plan, trade);
+    const actualRisk = Number(trade.actualRisk) || executionMath.risk || Number(plan.tradeRisk) || 0;
+    const actualRr = Number(trade.actualRr) || executionMath.rr || (actualRisk > 0 ? Number((pnl / actualRisk).toFixed(2)) : 0);
 
     return {
       plan,

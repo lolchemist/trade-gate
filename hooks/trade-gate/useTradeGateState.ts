@@ -200,7 +200,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             if (trade.id !== action.tradeId) return trade;
             const nextTrade = { ...trade, [action.field]: action.value } as ScenarioTrade;
             const tradeWithRisk =
-              action.field === "actualEntry" || action.field === "actualStop" || action.field === "actualSize"
+              action.field === "actualEntry" || action.field === "actualStop" || action.field === "actualTake" || action.field === "actualSize"
                 ? withCalculatedActualRisk(plan, nextTrade)
                 : nextTrade;
             if (action.field === "status" && action.value !== "planned" && !tradeWithRisk.executedAt) {

@@ -733,26 +733,37 @@ export function calculateScenarioTradeMath(item: SessionPlan) {
 export function calculateScenarioExecutionRisk(item: SessionPlan, trade: ScenarioTrade) {
   const entry = Number(trade.actualEntry);
   const stop = Number(trade.actualStop);
+  const take = Number(trade.actualTake);
   const plannedLot = calculateScenarioTradeMath(item).lot;
   const size = Number(trade.actualSize) || plannedLot;
   const pointValue = Number(item.tradePointValue);
   const stopDistance = Math.abs(entry - stop);
+  const takeDistance = Math.abs(take - entry);
   const risk = stopDistance > 0 && size > 0 && pointValue > 0 ? stopDistance * size * pointValue : 0;
+  const potential = takeDistance > 0 && size > 0 && pointValue > 0 ? takeDistance * size * pointValue : 0;
+  const rr = risk > 0 && potential > 0 ? potential / risk : 0;
   const hasData = Boolean(trade.actualEntry && trade.actualStop && size > 0 && item.tradePointValue);
+  const hasTakeData = Boolean(trade.actualEntry && trade.actualTake && size > 0 && item.tradePointValue);
 
-  return { stopDistance, risk, hasData };
+  return { stopDistance, takeDistance, risk, potential, rr, hasData, hasTakeData };
 }
 
 export function withCalculatedActualRisk(item: SessionPlan, trade: ScenarioTrade): ScenarioTrade {
-  const { risk } = calculateScenarioExecutionRisk(item, trade);
+  const { risk, rr } = calculateScenarioExecutionRisk(item, trade);
 
   return {
     ...trade,
     actualRisk: formatCalculatedRiskValue(risk),
+    actualRr: formatCalculatedRrValue(rr),
   };
 }
 
 function formatCalculatedRiskValue(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return Number(value.toFixed(2)).toString();
+}
+
+function formatCalculatedRrValue(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "";
   return Number(value.toFixed(2)).toString();
 }

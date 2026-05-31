@@ -5,6 +5,7 @@ import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
 import { ArchiveField } from "./form-controls";
 import { MetricTile, StatusPill } from "./terminal-ui";
 import {
+  calculateScenarioExecutionRisk,
   calculateScenarioTradeMath,
   formatCurrency,
   formatPlanDate,
@@ -143,7 +144,7 @@ export function ArchiveCard({ item, onRestore }: ArchiveCardProps) {
                 ) : (
                   <div className="space-y-3">
                     {trades.map((trade, index) => (
-                      <ExecutionReplayCard key={trade.id} trade={trade} index={index} />
+                      <ExecutionReplayCard key={trade.id} scenario={item} trade={trade} index={index} />
                     ))}
                   </div>
                 )}
@@ -240,8 +241,12 @@ function ArchiveHeroImage({ image, symbol }: { image?: string; symbol: string })
   );
 }
 
-function ExecutionReplayCard({ trade, index }: { trade: ScenarioTrade; index: number }) {
+function ExecutionReplayCard({ scenario, trade, index }: { scenario: ArchivedPlan; trade: ScenarioTrade; index: number }) {
   const result = Number(trade.actualResult) || 0;
+  const executionMath = calculateScenarioExecutionRisk(scenario, trade);
+  const expectedTake = executionMath.potential > 0 ? formatCurrency(executionMath.potential) : "—";
+  const actualRisk = Number(trade.actualRisk) || executionMath.risk;
+  const actualRr = Number(trade.actualRr) || executionMath.rr;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
@@ -252,11 +257,13 @@ function ExecutionReplayCard({ trade, index }: { trade: ScenarioTrade; index: nu
         </div>
         <div className={`font-mono text-lg font-semibold ${result >= 0 ? "text-emerald-100" : "text-rose-100"}`}>{formatSignedCurrency(result)}</div>
       </div>
-      <div className="mt-3 grid gap-2 text-sm md:grid-cols-5">
+      <div className="mt-3 grid gap-2 text-sm md:grid-cols-3 xl:grid-cols-7">
         <ArchiveField title="Факт вход" value={trade.actualEntry || "—"} />
         <ArchiveField title="Факт выход" value={trade.actualExit || "—"} />
         <ArchiveField title="Лотность" value={formatTradeSize(trade.actualSize)} />
-        <ArchiveField title="Факт RR" value={trade.actualRr ? `1:${trade.actualRr}` : "—"} />
+        <ArchiveField title="Факт риск" value={actualRisk > 0 ? formatCurrency(actualRisk) : "—"} />
+        <ArchiveField title="Ожид. тейк" value={expectedTake} />
+        <ArchiveField title="Факт RR" value={actualRr > 0 ? `1:${actualRr.toFixed(2)}` : "—"} />
         <ArchiveField title="Техничность" value={TECHNICAL_STATUS_LABELS[trade.technical] ?? trade.technical} />
       </div>
       {trade.executionNotes && <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">{trade.executionNotes}</div>}
