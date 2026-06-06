@@ -41,7 +41,11 @@ import { getNextValidTradingDate } from "@/lib/ftmoTime";
 import {
   formatPlanDate,
   formatSyncStatus,
+  calculateActiveScenarioRisk,
+  calculateScenarioTradeMath,
   getDateISO,
+  getActiveScenarioEntry,
+  getActiveScenarioStop,
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
@@ -158,6 +162,7 @@ export default function TradeGateApp() {
     }
   }, [dispatchPlanning, ftmoClock, ftmoDailyStateByFtmoTradingDay, isHydrated, storedControlSessionDate]);
   const activePlansForDate = useMemo(() => sessionPlans.filter((item) => item.planDate === activePlanDate), [sessionPlans, activePlanDate]);
+  const activeTradePlansForDate = useMemo(() => activePlansForDate.filter((item) => item.status === "active"), [activePlansForDate]);
   const chartImageByScenarioId = useMemo(
     () =>
       Object.fromEntries(
@@ -168,7 +173,7 @@ export default function TradeGateApp() {
   const scenarioDiagnostics = useScenarioDiagnostics(activePlansForDate, chartImageByScenarioId);
   const closeDaySummary = useMemo(() => {
     const closedScenarios = activePlansForDate.filter((item) => item.status === "closed");
-    const noEntryScenarios = activePlansForDate.filter((item) => item.resultStatus === "no_entry");
+    const noEntryScenarios = activePlansForDate.filter((item) => item.status === "no_entry" || item.resultStatus === "no_entry");
     const totalPnl = activePlansForDate.reduce((total, item) => total + getScenarioTotalResult(item), 0);
     const executedTrades = activePlansForDate.flatMap(getScenarioTrades).filter((trade) => trade.status !== "planned");
 
@@ -178,7 +183,7 @@ export default function TradeGateApp() {
       noEntryCount: noEntryScenarios.length,
       totalPnl,
       executedTradeCount: executedTrades.length,
-      unfinishedCount: activePlansForDate.filter((item) => item.status !== "closed").length,
+      unfinishedCount: activePlansForDate.filter((item) => item.status === "planned" || item.status === "active").length,
     };
   }, [activePlansForDate]);
   const closedDayTechnicalPercent = useMemo(() => {
@@ -251,17 +256,14 @@ export default function TradeGateApp() {
 
   const bestValidScenario = useMemo(
     () =>
-      getBestValidScenario(activePlansForDate, {
+      getBestValidScenario(activePlansForDate.filter((planItem) => planItem.status === "planned" || planItem.status === "active"), {
         personalMaxRiskPerTrade,
-        remainingPersonalDailyRisk: ftmoRisk.remainingPersonalDailyRisk,
-        remainingFtmoDailyRiskAfterBuffer: ftmoRisk.remainingFtmoDailyRiskAfterBuffer,
-        getRemainingDailyRiskForPlan: (planItem) => Math.max(0, dailyRiskRemaining + (Number(planItem.tradeRisk) || 0)),
       }),
-    [activePlansForDate, dailyRiskRemaining, ftmoRisk.remainingFtmoDailyRiskAfterBuffer, ftmoRisk.remainingPersonalDailyRisk, personalMaxRiskPerTrade]
+    [activePlansForDate, personalMaxRiskPerTrade]
   );
 
   const sessionPlanReadyCount = useMemo(
-    () => activePlansForDate.filter(isPlanReady).length,
+    () => activePlansForDate.filter((planItem) => (planItem.status === "planned" || planItem.status === "active") && isPlanReady(planItem)).length,
     [activePlansForDate]
   );
   const behavioralRisk = useBehavioralRiskEngine({
@@ -343,6 +345,33 @@ export default function TradeGateApp() {
       dispatchPlanning({ type: "set-trading-day-status", planDate: activePlanDate, status: "active" });
     }
     dispatchPlanning({ type: "add-trade", scenarioId, executionType });
+  };
+
+  const activateScenario = (id: number) => {
+    if (isTradingDayClosed) {
+      const confirmed = window.confirm("Торговый день закрыт. Переоткрыть его, чтобы активировать сделку?");
+      if (!confirmed) return;
+      dispatchPlanning({ type: "set-trading-day-status", planDate: activePlanDate, status: "active" });
+    }
+    dispatchPlanning({ type: "activate-plan", id });
+    setSyncStatus("Сделка открыта. Риск теперь участвует в дневном лимите.");
+  };
+
+  const deactivateScenario = (id: number) => {
+    dispatchPlanning({ type: "deactivate-plan", id });
+    setSyncStatus("Активность снята. Сценарий снова считается планом, а не открытым риском.");
+  };
+
+  const cancelScenario = (id: number) => {
+    const confirmed = window.confirm("Отменить сценарий? Он не будет участвовать в дневном риске.");
+    if (!confirmed) return;
+    dispatchPlanning({ type: "cancel-plan", id });
+    setSyncStatus("Сценарий отменён и не занимает дневной риск.");
+  };
+
+  const markScenarioNoEntry = (id: number) => {
+    dispatchPlanning({ type: "mark-no-entry", id });
+    setSyncStatus("Сценарий отмечен как без входа.");
   };
 
   const updateScenarioTrade = <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => {
@@ -450,7 +479,7 @@ export default function TradeGateApp() {
   };
 
   const openCloseTradingDayDialog = () => {
-    setCloseCarryIds(activePlansForDate.filter((planItem) => planItem.status !== "closed").map((planItem) => planItem.id));
+    setCloseCarryIds(activePlansForDate.filter((planItem) => planItem.status === "planned" || planItem.status === "active").map((planItem) => planItem.id));
     setCloseCarryMode("scenario_trade_plan");
     setCloseDialogOpen(true);
   };
@@ -603,6 +632,7 @@ export default function TradeGateApp() {
                       <Rule title="Готовых" value={String(sessionPlanReadyCount)} />
                       <Rule title="Закрытых" value={String(closeDaySummary.closedCount)} />
                     </div>
+                    <ActiveTradesPanel plans={activeTradePlansForDate} />
                     {!isTradingDayClosed && <ScenarioReadinessSummary diagnostics={scenarioDiagnostics} />}
                     {!isTradingDayClosed && <BehavioralRiskPanel behavioralRisk={behavioralRisk} />}
                     {!isTradingDayClosed && (
@@ -703,6 +733,10 @@ export default function TradeGateApp() {
                       onImageChange={handleInstrumentImage}
                       onDeleteImage={deleteInstrumentImage}
                       onUpdatePlan={updateSessionPlan}
+                      onActivatePlan={activateScenario}
+                      onDeactivatePlan={deactivateScenario}
+                      onCancelPlan={cancelScenario}
+                      onNoEntryPlan={markScenarioNoEntry}
                       onAddTrade={addScenarioTrade}
                       onUpdateTrade={updateScenarioTrade}
                       onRemoveTrade={removeScenarioTrade}
@@ -1033,4 +1067,60 @@ export default function TradeGateApp() {
       )}
     </div>
   );
+}
+
+function ActiveTradesPanel({ plans }: { plans: SessionPlan[] }) {
+  return (
+    <div className="rounded-[1.5rem] border border-white/[0.07] bg-white/[0.035] p-4 shadow-inner shadow-black/10">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-neutral-500">Активные сделки</div>
+          <div className="mt-1 text-sm text-neutral-400">Реальный открытый риск, который занимает дневной лимит.</div>
+        </div>
+        <div className="rounded-full border border-cyan-200/15 bg-cyan-200/[0.055] px-3 py-1 text-xs font-semibold text-cyan-100">
+          {plans.length}
+        </div>
+      </div>
+
+      {plans.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3 text-sm text-neutral-500">
+          Сейчас нет активных сделок. Planned-сценарии не уменьшают остаток дневного риска.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {plans.map((plan) => {
+            const risk = calculateActiveScenarioRisk(plan);
+            const rr = calculateScenarioTradeMath(plan).rr;
+            const entry = getActiveScenarioEntry(plan);
+            const stop = getActiveScenarioStop(plan);
+
+            return (
+              <div key={plan.id} className="rounded-2xl border border-cyan-200/12 bg-cyan-200/[0.045] px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-neutral-100">
+                    {plan.symbol} · {directionShortLabel(plan.direction)}
+                  </div>
+                  <div className="rounded-full border border-cyan-200/15 bg-black/20 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                    Активная
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-neutral-400">
+                  <span>Entry {entry || "—"}</span>
+                  <span>SL {stop || "—"}</span>
+                  <span>Risk ${risk.toFixed(0)}</span>
+                  <span>RR {rr > 0 ? `1:${rr.toFixed(2)}` : "—"}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function directionShortLabel(direction: SessionPlan["direction"]) {
+  if (direction === "short") return "Short";
+  if (direction === "both") return "Both";
+  return "Long";
 }

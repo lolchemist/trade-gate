@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { calculatePlannedRisk, calculateScenarioExecutionRisk, getDailyRiskBudget, getExecutedScenarioTrades, isScenarioClosed } from "@/components/trade-gate/utils";
+import { calculateActiveScenarioRisk, calculatePlannedRisk, getDailyRiskBudget, getExecutedScenarioTrades, isScenarioClosed } from "@/components/trade-gate/utils";
 import type { AccountSettings, ArchivedPlan, DailyRiskBudget, ScenarioTrade, SessionPlan, TodayMetrics } from "@/types/trade-gate";
 
 const executedStatuses = new Set<ScenarioTrade["status"]>(["executed", "take", "stop", "manual_profit", "manual_loss", "breakeven"]);
@@ -27,9 +27,10 @@ function calculateTodayMetrics(
   const activePlansForDate = sessionPlans.filter((plan) => plan.planDate === activePlanDate);
   const archivedForDate = archivedPlans.filter((plan) => plan.planDate === activePlanDate);
   const closedPlansForDate = activePlansForDate.filter(isScenarioClosed);
-  const activeExecutedTrades = activePlansForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, plan, archivedAt: trade.executedAt || plan.closedAt || "", planId: plan.id })));
+  const finalPlansForDate = activePlansForDate.filter((plan) => plan.status === "closed" || plan.status === "cancelled" || plan.status === "no_entry");
+  const closedExecutedTrades = closedPlansForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, plan, archivedAt: trade.executedAt || plan.closedAt || "", planId: plan.id })));
   const archivedExecutedTrades = archivedForDate.flatMap((plan) => getExecutedScenarioTrades(plan).map((trade) => ({ trade, plan, archivedAt: trade.executedAt || plan.archivedAt, planId: plan.id })));
-  const executedTrades = [...activeExecutedTrades, ...archivedExecutedTrades].filter((item) => executedStatuses.has(item.trade.status));
+  const executedTrades = [...closedExecutedTrades, ...archivedExecutedTrades].filter((item) => executedStatuses.has(item.trade.status));
   const dailyRiskBudget = getDailyRiskBudget(dailyRiskBudgets, activePlanDate);
   const budget = Number(dailyRiskBudget.budgetUsd) || 0;
   const plannedRiskUsed = calculatePlannedRisk(sessionPlans, activePlanDate);
@@ -38,11 +39,9 @@ function calculateTodayMetrics(
     const result = Number(item.trade.actualResult) || 0;
     return result < 0 ? total + Math.abs(result) : total;
   }, 0);
-  const activeRiskExposureUsed = activeExecutedTrades.reduce((total, item) => {
-    if (item.trade.status !== "executed") return total;
-    const calculatedRisk = calculateScenarioExecutionRisk(item.plan, item.trade).risk;
-    return total + Math.max(0, Number(item.trade.actualRisk) || calculatedRisk || 0);
-  }, 0);
+  const activeRiskExposureUsed = activePlansForDate
+    .filter((plan) => plan.status === "active")
+    .reduce((total, plan) => total + calculateActiveScenarioRisk(plan), 0);
   const riskUsedTotal = realizedLossUsed + activeRiskExposureUsed;
   const remainingRisk = budget - riskUsedTotal;
   const personalDailyStop = Number(accountSettings.personalDailyStop) || 0;
@@ -74,7 +73,7 @@ function calculateTodayMetrics(
     stopCount: executedTrades.filter((item) => item.trade.status === "stop").length,
     takeCount: executedTrades.filter((item) => item.trade.status === "take").length,
     manualCloseCount: executedTrades.filter((item) => item.trade.status === "manual_profit" || item.trade.status === "manual_loss" || item.trade.status === "breakeven").length,
-    noEntryCount: [...closedPlansForDate, ...archivedForDate].filter((plan) => plan.resultStatus === "no_entry" || getExecutedScenarioTrades(plan).length === 0).length,
+    noEntryCount: [...finalPlansForDate, ...archivedForDate].filter((plan) => plan.status === "no_entry" || plan.resultStatus === "no_entry" || getExecutedScenarioTrades(plan).length === 0).length,
   };
 }
 

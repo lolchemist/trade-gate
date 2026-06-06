@@ -335,6 +335,34 @@ export function getExecutedScenarioTrades(plan: SessionPlan) {
   return getScenarioTrades(plan).filter(isTradeFact);
 }
 
+export function getActiveScenarioTrade(plan: SessionPlan) {
+  return (
+    getScenarioTrades(plan).find((trade) => trade.status === "executed") ??
+    getScenarioTrades(plan).find((trade) => trade.status === "planned") ??
+    getScenarioTrades(plan)[0]
+  );
+}
+
+export function calculateActiveScenarioRisk(plan: SessionPlan) {
+  if (plan.status !== "active") return 0;
+
+  const activeTrade = getActiveScenarioTrade(plan);
+  if (!activeTrade) return Math.max(0, Number(plan.tradeRisk) || 0);
+
+  const calculatedRisk = calculateScenarioExecutionRisk(plan, activeTrade).risk;
+  return Math.max(0, Number(activeTrade.actualRisk) || calculatedRisk || Number(plan.tradeRisk) || 0);
+}
+
+export function getActiveScenarioEntry(plan: SessionPlan) {
+  const activeTrade = getActiveScenarioTrade(plan);
+  return activeTrade?.actualEntry || plan.tradeEntry || plan.entryZone;
+}
+
+export function getActiveScenarioStop(plan: SessionPlan) {
+  const activeTrade = getActiveScenarioTrade(plan);
+  return activeTrade?.actualStop || plan.tradeStop || plan.stop;
+}
+
 export function getScenarioTotalResult(plan: SessionPlan) {
   const trades = getExecutedScenarioTrades(plan);
   if (trades.length === 0 && isScenarioClosed(plan)) return Number(plan.finalResult) || 0;
@@ -368,7 +396,11 @@ export function isScenarioClosed(plan: SessionPlan) {
 }
 
 export function isScenarioPlannedExposure(plan: SessionPlan) {
-  return plan.status !== "closed" && plan.status !== "archived";
+  return plan.status === "planned";
+}
+
+export function isScenarioActiveExposure(plan: SessionPlan) {
+  return plan.status === "active";
 }
 
 export function ensureScenarioCloseTrade(plan: SessionPlan): SessionPlan {

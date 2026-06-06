@@ -23,6 +23,10 @@ export function InstrumentCard({
   onImageChange,
   onDeleteImage,
   onUpdatePlan,
+  onActivatePlan,
+  onDeactivatePlan,
+  onCancelPlan,
+  onNoEntryPlan,
   onAddTrade,
   onUpdateTrade,
   onRemoveTrade,
@@ -43,6 +47,10 @@ export function InstrumentCard({
   onImageChange: (symbol: string, file: File | undefined) => void;
   onDeleteImage: (symbol: string) => void;
   onUpdatePlan: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
+  onActivatePlan: (id: number) => void;
+  onDeactivatePlan: (id: number) => void;
+  onCancelPlan: (id: number) => void;
+  onNoEntryPlan: (id: number) => void;
   onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
   onUpdateTrade: <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => void;
   onRemoveTrade: (scenarioId: number, tradeId: string) => void;
@@ -56,9 +64,10 @@ export function InstrumentCard({
   const imageKey = getInstrumentImageKey(activePlanDate, idea.symbol);
   const uploadInputId = `chart-upload-${imageKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const image = instrumentImages[imageKey];
-  const readyCount = plans.filter(isPlanReady).length;
+  const livePlans = plans.filter((plan) => plan.status === "planned" || plan.status === "active");
+  const readyCount = livePlans.filter(isPlanReady).length;
   const riskAllocated = plans.filter(isScenarioPlannedExposure).reduce((sum, plan) => sum + (Number(plan.tradeRisk) || 0), 0);
-  const readiness = plans.length > 0 ? Math.round((readyCount / plans.length) * 100) : 0;
+  const readiness = livePlans.length > 0 ? Math.round((readyCount / livePlans.length) * 100) : 0;
   const getIdeaText = (field: MarketIdeaField) => marketIdeaNotes[getMarketIdeaKey(activePlanDate, idea.symbol, field)] ?? idea[field];
 
   if (process.env.NODE_ENV !== "production") {
@@ -163,6 +172,10 @@ export function InstrumentCard({
               tradeArguments={tradeArguments}
               hasChartImage={Boolean(image)}
               onUpdate={onUpdatePlan}
+              onActivate={onActivatePlan}
+              onDeactivate={onDeactivatePlan}
+              onCancel={onCancelPlan}
+              onNoEntry={onNoEntryPlan}
               onAddTrade={onAddTrade}
               onUpdateTrade={onUpdateTrade}
               onRemoveTrade={onRemoveTrade}

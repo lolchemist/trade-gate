@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { calculateScenarioExecutionRisk, calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, getScenarioTrades } from "@/components/trade-gate/utils";
+import { calculateActiveScenarioRisk, calculateScenarioExecutionRisk, calculateScenarioTradeMath, getExecutedScenarioTrades, getPlanEntryMethod, getScenarioArguments, getScenarioTrades } from "@/components/trade-gate/utils";
 import type { DailyRiskBudget, FTMODailyState, PlanningState, RiskControlState, ScenarioTrade, SessionPlan } from "@/types/trade-gate";
 
 type JsonRecord = Record<string, unknown>;
@@ -57,7 +57,12 @@ async function upsertTradingDays(supabase: SupabaseClient, state: PlanningState,
     const plansForDate = getAllPlans(state).filter((plan) => plan.planDate === planDate);
     const archivedForDate = state.archivedPlans.filter((plan) => plan.planDate === planDate);
     const realizedPnl = archivedForDate.reduce((total, plan) => total + (Number(plan.finalResult) || 0), 0);
-    const totalPlannedRisk = plansForDate.filter((plan) => plan.status !== "archived" && plan.status !== "closed").reduce((total, plan) => total + (Number(plan.tradeRisk) || 0), 0);
+    const closedLossToday = archivedForDate.reduce((total, plan) => {
+      const scenarioPnl = getExecutedScenarioTrades(plan).reduce((sum, trade) => sum + (Number(trade.actualResult) || 0), 0);
+      return scenarioPnl < 0 ? total + Math.abs(scenarioPnl) : total;
+    }, 0);
+    const activeRisk = plansForDate.filter((plan) => plan.status === "active").reduce((total, plan) => total + calculateActiveScenarioRisk(plan), 0);
+    const totalPlannedRisk = plansForDate.filter((plan) => plan.status === "planned").reduce((total, plan) => total + (Number(plan.tradeRisk) || 0), 0);
     const status = state.tradingDayStatuses[planDate] ?? state.tradingDayStatusByDate[planDate] ?? "active";
 
     return {
@@ -71,6 +76,9 @@ async function upsertTradingDays(supabase: SupabaseClient, state: PlanningState,
       payload: {
         riskControls: state.riskControlsByDate[planDate],
         dailyRiskBudget: state.dailyRiskBudgets[planDate],
+        usedRisk: closedLossToday + activeRisk,
+        activeRisk,
+        closedLossToday,
       },
       updated_at: savedAt,
     };

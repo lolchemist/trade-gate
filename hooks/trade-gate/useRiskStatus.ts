@@ -166,15 +166,13 @@ function calculateRiskStatus({
   const tradesTodayNumber = Number(tradesToday);
   const scenarioValidationOptions = {
     personalMaxRiskPerTrade,
-    remainingPersonalDailyRisk: ftmoRisk ? Math.max(0, ftmoRisk.remainingPersonalDailyRisk) : undefined,
-    remainingFtmoDailyRiskAfterBuffer: ftmoRisk ? Math.max(0, ftmoRisk.remainingFtmoDailyRiskAfterBuffer) : undefined,
   };
-  const getRemainingDailyRiskForPlan = (planItem: SessionPlan) => Math.max(0, dailyRiskRemaining + (Number(planItem.tradeRisk) || 0));
-  const scenarioValidations = sessionPlansForDate.map((planItem) =>
-    validateScenarioPlan(planItem, { ...scenarioValidationOptions, remainingDailyRisk: getRemainingDailyRiskForPlan(planItem) })
+  const tradablePlansForDate = sessionPlansForDate.filter((planItem) => planItem.status === "planned" || planItem.status === "active");
+  const scenarioValidations = tradablePlansForDate.map((planItem) =>
+    validateScenarioPlan(planItem, scenarioValidationOptions)
   );
   const validScenarioCount = scenarioValidations.filter((item) => item.valid).length;
-  const bestValidScenario = getBestValidScenario(sessionPlansForDate, { ...scenarioValidationOptions, getRemainingDailyRiskForPlan });
+  const bestValidScenario = getBestValidScenario(tradablePlansForDate, scenarioValidationOptions);
 
   if (isLocked) {
     riskScore += 100;
@@ -268,13 +266,14 @@ function calculateRiskStatus({
     if (isWithinTwoHoursOfFtmoReset && ftmoRisk.effectiveDailyLoss < 0) warnings.push("Отрицательный floating PnL около reset уменьшает доступный FTMO daily loss.");
 
     ftmoPlannedRiskTooLarge = sessionPlansForDate.some((planItem) => {
+      if (planItem.status !== "planned") return false;
       const tradeRisk = Number(planItem.tradeRisk) || 0;
       return tradeRisk > 0 && (tradeRisk > ftmoRisk.remainingPersonalDailyRisk || tradeRisk > ftmoRisk.remainingFtmoDailyRiskAfterBuffer);
     });
     if (ftmoPlannedRiskTooLarge) {
-      riskScore += 50;
-      readiness.discipline = Math.min(readiness.discipline, 15);
-      reasons.push("плановый риск сценария превышает доступный FTMO/личный дневной риск");
+      riskScore += 4;
+      readiness.discipline = Math.min(readiness.discipline, 75);
+      warnings.push("Плановый риск сценария превышает доступный FTMO/личный дневной риск. Это предупреждение, не блокировка.");
     }
   }
 
@@ -408,7 +407,6 @@ function calculateRiskStatus({
     ftmoRisk?.personalDailyStopHit ||
     ftmoRisk?.ftmoDailyLossHit ||
     ftmoRisk?.maxLossBreached ||
-    ftmoPlannedRiskTooLarge ||
     revenge ||
     !stopSet ||
     validScenarioCount === 0 ||

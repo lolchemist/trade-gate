@@ -25,7 +25,7 @@ export type TradeExecutionType = "trade_1" | "re_entry";
 
 export type TradeExecutionStatus = "planned" | "executed" | ResultStatus;
 
-export type ScenarioLifecycleStatus = "planned" | "active" | "closed" | "archived";
+export type ScenarioLifecycleStatus = "planned" | "active" | "closed" | "cancelled" | "no_entry" | "archived";
 
 export type EntryType = "bounce" | "breakout" | "false_breakout" | "retest";
 

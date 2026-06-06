@@ -77,6 +77,10 @@ export type PlanningAction =
   | { type: "set-sync-key"; syncKey: string }
   | { type: "add-plan"; symbol: string }
   | { type: "update-plan"; id: number; field: EditablePlanField; value: SessionPlan[EditablePlanField] }
+  | { type: "activate-plan"; id: number }
+  | { type: "deactivate-plan"; id: number }
+  | { type: "cancel-plan"; id: number }
+  | { type: "mark-no-entry"; id: number }
   | { type: "add-trade"; scenarioId: number; executionType: TradeExecutionType }
   | { type: "update-trade"; scenarioId: number; tradeId: string; field: EditableTradeField; value: ScenarioTrade[EditableTradeField] }
   | { type: "remove-trade"; scenarioId: number; tradeId: string }
@@ -178,8 +182,51 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
             return { ...plan, arguments: normalizeScenarioArguments(action.value) };
           }
           const nextPlan = { ...plan, [action.field]: action.value } as SessionPlan;
-          return action.field === "tradePointValue" ? recalculateExecutionRisks(nextPlan) : nextPlan;
+          return shouldRecalculateExecutionRisks(action.field) ? recalculateExecutionRisks(nextPlan) : nextPlan;
         }),
+      };
+    case "activate-plan":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => {
+          if (plan.id !== action.id || !validateScenarioPlan(plan).valid) return plan;
+          return activateScenarioPlan(plan);
+        }),
+      };
+    case "deactivate-plan":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id && plan.status === "active" ? { ...plan, status: "planned" } : plan)),
+      };
+    case "cancel-plan":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) =>
+          plan.id === action.id
+            ? syncLegacyResultFields({
+                ...plan,
+                status: "cancelled",
+                resultStatus: "not_taken",
+                finalResult: "",
+                closedAt: plan.closedAt || new Date().toISOString(),
+              })
+            : plan
+        ),
+      };
+    case "mark-no-entry":
+      return {
+        ...state,
+        sessionPlans: state.sessionPlans.map((plan) =>
+          plan.id === action.id
+            ? syncLegacyResultFields({
+                ...plan,
+                status: "no_entry",
+                resultStatus: "no_entry",
+                finalResult: "0",
+                closedAt: plan.closedAt || new Date().toISOString(),
+              })
+            : plan
+        ),
       };
     case "add-trade":
       return {
@@ -188,7 +235,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
           if (plan.id !== action.scenarioId || !validateScenarioPlan(plan).valid) return plan;
           const trades = Array.isArray(plan.trades) ? plan.trades : [];
           const executionType = trades.length === 0 ? "trade_1" : action.executionType;
-          return { ...plan, status: plan.status === "planned" ? "active" : plan.status, trades: [...trades, createScenarioTrade(plan, executionType)] };
+          return { ...plan, trades: [...trades, createScenarioTrade(plan, executionType)] };
         }),
       };
     case "update-trade":
@@ -229,7 +276,7 @@ export function planningReducer(state: PlanningState, action: PlanningAction): P
     case "reopen-plan":
       return {
         ...state,
-        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id ? { ...plan, status: "active", closedAt: "", archivedAt: "" } : plan)),
+        sessionPlans: state.sessionPlans.map((plan) => (plan.id === action.id ? { ...plan, status: "planned", closedAt: "", archivedAt: "" } : plan)),
       };
     case "restore-plan": {
       const planToRestore = state.archivedPlans.find((plan) => plan.id === action.id);
@@ -463,6 +510,40 @@ function ensureRiskControlsForDate(riskControlsByDate: PlanningState["riskContro
 function recalculateExecutionRisks(plan: SessionPlan): SessionPlan {
   if (!Array.isArray(plan.trades) || plan.trades.length === 0) return plan;
   return { ...plan, trades: plan.trades.map((trade) => withCalculatedActualRisk(plan, trade)) };
+}
+
+function shouldRecalculateExecutionRisks(field: EditablePlanField) {
+  return field === "tradePointValue" || field === "tradeEntry" || field === "tradeStop" || field === "tradeTake" || field === "tradeRisk";
+}
+
+function activateScenarioPlan(plan: SessionPlan): SessionPlan {
+  const now = new Date().toISOString();
+  const trades = Array.isArray(plan.trades) && plan.trades.length > 0 ? plan.trades : [createScenarioTrade(plan, "trade_1")];
+  let activated = false;
+
+  const activeTrades = trades.map((trade, index) => {
+    if (activated) return trade;
+    if (trade.executionType !== "trade_1" && index > 0) return trade;
+
+    activated = true;
+    return withCalculatedActualRisk(plan, {
+      ...trade,
+      status: trade.status === "planned" ? "executed" : trade.status,
+      actualEntry: trade.actualEntry || plan.tradeEntry,
+      actualStop: trade.actualStop || plan.tradeStop,
+      actualTake: trade.actualTake || plan.tradeTake,
+      actualSize: trade.actualSize || createScenarioTrade(plan, trade.executionType).actualSize,
+      executedAt: trade.executedAt || now,
+    });
+  });
+
+  return syncLegacyResultFields({
+    ...plan,
+    status: "active",
+    closedAt: "",
+    archivedAt: "",
+    trades: activeTrades,
+  });
 }
 
 function preserveScenarioLabels(plan: SessionPlan, tradeArguments: TradeArgument[]): SessionPlan {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, ChevronDown, CloudUpload, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowRight, Ban, CheckCircle2, ChevronDown, CloudUpload, PauseCircle, PlayCircle, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPointValueLabel } from "@/constants/instrumentDefaults";
 import { RESULT_STATUS_LABELS, TECHNICAL_STATUS_LABELS } from "./constants";
@@ -8,7 +8,7 @@ import { EntryMethodSelector } from "./EntryMethodSelector";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
-import { calculateScenarioExecutionRisk, calculateScenarioTradeMath, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
+import { calculateActiveScenarioRisk, calculateScenarioExecutionRisk, calculateScenarioTradeMath, getActiveScenarioTrade, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
@@ -56,6 +56,10 @@ export function ScenarioCard({
   tradeArguments,
   hasChartImage,
   onUpdate,
+  onActivate,
+  onDeactivate,
+  onCancel,
+  onNoEntry,
   onAddTrade,
   onUpdateTrade,
   onRemoveTrade,
@@ -70,6 +74,10 @@ export function ScenarioCard({
   tradeArguments: TradeArgument[];
   hasChartImage: boolean;
   onUpdate: <K extends EditablePlanField>(id: number, field: K, value: SessionPlan[K]) => void;
+  onActivate: (id: number) => void;
+  onDeactivate: (id: number) => void;
+  onCancel: (id: number) => void;
+  onNoEntry: (id: number) => void;
   onAddTrade: (scenarioId: number, executionType: TradeExecutionType) => void;
   onUpdateTrade: <K extends EditableTradeField>(scenarioId: number, tradeId: string, field: K, value: ScenarioTrade[K]) => void;
   onRemoveTrade: (scenarioId: number, tradeId: string) => void;
@@ -90,6 +98,14 @@ export function ScenarioCard({
   const scenarioArguments = getScenarioArguments(item);
   const entryMethod = getPlanEntryMethod(item);
   const closed = item.status === "closed";
+  const active = item.status === "active";
+  const cancelled = item.status === "cancelled";
+  const noEntry = item.status === "no_entry";
+  const finalState = closed || cancelled || noEntry || item.status === "archived";
+  const activeTrade = getActiveScenarioTrade(item);
+  const activeRisk = calculateActiveScenarioRisk(item);
+  const plannedRisk = Number(item.tradeRisk) || 0;
+  const activeRiskIncreased = active && activeRisk > plannedRisk && plannedRisk > 0;
   const canClose = canCloseScenario(item);
   const saveButtonLabel =
     manualSaveState === "saving"
@@ -134,7 +150,7 @@ export function ScenarioCard({
   };
 
   return (
-    <div className={`overflow-hidden rounded-3xl border transition ${closed ? "border-neutral-300/15 bg-white/[0.025] opacity-90" : ready ? "border-emerald-200/18 bg-emerald-200/[0.045]" : "border-white/[0.08] bg-white/[0.025]"}`}>
+    <div className={`overflow-hidden rounded-3xl border transition ${finalState ? "border-neutral-300/15 bg-white/[0.025] opacity-90" : ready ? "border-emerald-200/18 bg-emerald-200/[0.045]" : "border-white/[0.08] bg-white/[0.025]"}`}>
       <button type="button" onClick={() => setOpen((value) => !value)} className="w-full p-4 text-left">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -154,7 +170,7 @@ export function ScenarioCard({
             <ScenarioBadge label="Риск ok" value={validation.riskValid ? "Да" : "Нет"} tone={validation.riskValid ? "emerald" : "amber"} />
             <ScenarioBadge label="RR ok" value={validation.rrValid ? "Да" : "Нет"} tone={validation.rrValid ? "emerald" : "amber"} />
             <ScenarioBadge label="Сумма" value={item.tradeRisk ? `$${Number(item.tradeRisk || 0).toFixed(0)}` : "—"} tone="amber" />
-            {closed ? <ScenarioBadge label="Факт" value={item.finalResult ? `$${Number(item.finalResult || 0).toFixed(0)}` : "—"} tone={Number(item.finalResult) >= 0 ? "emerald" : "red"} /> : null}
+            {finalState ? <ScenarioBadge label="Факт" value={item.finalResult ? `$${Number(item.finalResult || 0).toFixed(0)}` : "—"} tone={Number(item.finalResult) >= 0 ? "emerald" : "red"} /> : null}
             <ScenarioBadge label="Качество" value={`${quality.score}%`} tone={quality.score >= 75 ? "emerald" : quality.score >= 45 ? "amber" : "red"} />
             <div className="flex items-center justify-end">
               <ChevronDown className={`h-5 w-5 text-neutral-500 transition ${open ? "rotate-180" : ""}`} />
@@ -240,10 +256,33 @@ export function ScenarioCard({
                 <div className="mt-1 text-sm text-neutral-500">Фактические попытки внутри одной торговой гипотезы.</div>
               </div>
               <div className="flex flex-wrap gap-2">
+                {item.status === "planned" && (
+                  <Button
+                    type="button"
+                    onClick={() => onActivate(item.id)}
+                    disabled={!ready}
+                    variant="outline"
+                    className="rounded-xl border border-emerald-200/25 bg-emerald-200/[0.08] text-emerald-100 hover:bg-emerald-200/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    Сделка открыта
+                  </Button>
+                )}
+                {active && (
+                  <Button
+                    type="button"
+                    onClick={() => onDeactivate(item.id)}
+                    variant="outline"
+                    className="rounded-xl border border-amber-200/20 bg-amber-200/[0.07] text-amber-100 hover:bg-amber-200/[0.1]"
+                  >
+                    <PauseCircle className="mr-2 h-4 w-4" />
+                    Отменить активность
+                  </Button>
+                )}
                 <Button
                   type="button"
                   onClick={() => onAddTrade(item.id, "trade_1")}
-                  disabled={!ready}
+                  disabled={!ready || finalState}
                   variant="outline"
                   className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -253,7 +292,7 @@ export function ScenarioCard({
                 <Button
                   type="button"
                   onClick={() => onAddTrade(item.id, "re_entry")}
-                  disabled={!ready}
+                  disabled={!ready || finalState}
                   variant="outline"
                   className="rounded-xl border border-sky-200/20 bg-sky-200/[0.06] text-sky-100 hover:bg-sky-200/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -262,6 +301,29 @@ export function ScenarioCard({
                 </Button>
               </div>
             </div>
+            {active && (
+              <div className="mb-3 grid gap-3 rounded-2xl border border-cyan-200/15 bg-cyan-200/[0.055] p-4 md:grid-cols-[1fr_220px]">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill tone="cyan">Активная сделка</StatusPill>
+                    <StatusPill tone={activeRiskIncreased ? "amber" : "emerald"}>Риск ${activeRisk.toFixed(2)}</StatusPill>
+                  </div>
+                  <div className="mt-2 text-sm leading-relaxed text-neutral-400">
+                    Этот риск участвует в дневном лимите. Если переносишь стоп, обнови фактический стоп — остаток дневного риска пересчитается сразу.
+                  </div>
+                  {activeRiskIncreased && (
+                    <div className="mt-2 text-sm text-amber-100">
+                      Риск активной сделки выше планового на ${(activeRisk - plannedRisk).toFixed(2)}$.
+                    </div>
+                  )}
+                </div>
+                <NumberInput
+                  label="Перенести стоп"
+                  value={activeTrade?.actualStop ?? item.tradeStop}
+                  setValue={(value) => (activeTrade ? onUpdateTrade(item.id, activeTrade.id, "actualStop", value) : onUpdate(item.id, "tradeStop", value))}
+                />
+              </div>
+            )}
             {!ready && <div className="mb-3 rounded-2xl border border-amber-200/20 bg-amber-200/[0.07] px-4 py-3 text-sm text-amber-100">Сделку можно добавить только после готового сценария.</div>}
             {(item.trades ?? []).length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-500">Пока нет фактических исполнений. Добавь Trade 1 после подготовки сценария.</div>
@@ -288,7 +350,7 @@ export function ScenarioCard({
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Закрытие сделки</div>
                 <div className="mt-1 text-sm text-neutral-500">Сначала фиксируем итог внутри дня. В архив сценарий уйдёт только при закрытии торгового дня.</div>
               </div>
-              {closed && <StatusPill tone="neutral">Закрыта {item.closedAt || "—"}</StatusPill>}
+              {finalState && <StatusPill tone="neutral">{lifecycleLabel(item.status)} {item.closedAt || "—"}</StatusPill>}
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
@@ -306,7 +368,7 @@ export function ScenarioCard({
               />
             </div>
 
-            {closed ? (
+            {finalState ? (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
                 <div className="text-sm text-neutral-400">
                   Зафиксировано: <span className="text-neutral-100">{RESULT_STATUS_LABELS[item.resultStatus] ?? item.resultStatus}</span> · {item.finalResult ? `$${item.finalResult}` : "$0"}
@@ -319,7 +381,7 @@ export function ScenarioCard({
             ) : (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs leading-relaxed text-neutral-500">
-                  Для закрытия нужен итог, финрезультат и техничность. Без входа можно закрыть с результатом 0.
+                  Для закрытия активной сделки нужен итог, финрезультат и техничность. Идея без входа фиксируется отдельной кнопкой “Без входа”.
                 </div>
                 <Button
                   type="button"
@@ -351,6 +413,18 @@ export function ScenarioCard({
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {item.status === "planned" && (
+              <>
+                <Button onClick={() => onNoEntry(item.id)} variant="outline" className="rounded-xl border border-white/10 bg-black/40 text-neutral-100 hover:bg-white/10">
+                  <Ban className="mr-2 h-4 w-4" />
+                  Без входа
+                </Button>
+                <Button onClick={() => onCancel(item.id)} variant="outline" className="rounded-xl border border-amber-200/20 bg-amber-200/[0.06] text-amber-100 hover:bg-amber-200/[0.1]">
+                  <Ban className="mr-2 h-4 w-4" />
+                  Отменить сценарий
+                </Button>
+              </>
+            )}
             <Button
               onClick={() => void handleSaveNow()}
               disabled={manualSaveState === "saving"}
@@ -601,6 +675,8 @@ function directionLabel(direction: Direction) {
 function lifecycleLabel(status: SessionPlan["status"]) {
   if (status === "active") return "Активна";
   if (status === "closed") return "Закрыта";
+  if (status === "cancelled") return "Отменена";
+  if (status === "no_entry") return "Без входа";
   if (status === "archived") return "Архив";
   return "План";
 }
@@ -608,14 +684,14 @@ function lifecycleLabel(status: SessionPlan["status"]) {
 function lifecycleTone(status: SessionPlan["status"]): "emerald" | "amber" | "red" | "neutral" | "cyan" {
   if (status === "active") return "cyan";
   if (status === "closed") return "neutral";
+  if (status === "cancelled" || status === "no_entry") return "amber";
   if (status === "archived") return "amber";
   return "neutral";
 }
 
 function canCloseScenario(item: SessionPlan) {
-  if (item.status === "closed" || item.status === "archived") return false;
+  if (item.status !== "active") return false;
   if (item.resultStatus === "not_taken") return false;
   if (!item.technical) return false;
-  if (item.resultStatus === "no_entry") return true;
   return item.finalResult.trim().length > 0;
 }
