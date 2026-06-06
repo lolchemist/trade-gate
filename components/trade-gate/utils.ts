@@ -1,4 +1,4 @@
-import { DEFAULT_DAILY_RISK_BUDGET, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
+import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import type {
   ArchivedPlan,
@@ -782,6 +782,8 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   const minimumRr = options.minimumRr ?? MIN_SCENARIO_RR;
   const tradeRisk = Number(item.tradeRisk) || 0;
   const scenarioArguments = getScenarioArguments(item);
+  const entryMethod = getPlanEntryMethod(item);
+  const entryMethodAllowed = Boolean(entryMethod && DEFAULT_ENTRY_METHODS.includes(entryMethod));
   const rrValid = math.rr >= minimumRr;
   const riskValid =
     tradeRisk > 0 &&
@@ -795,7 +797,16 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
 
   if (!item.symbol) reasons.push("не выбран инструмент");
   if (!item.direction) reasons.push("не выбрано направление");
-  if (!item.tradeEntry) reasons.push("не заполнен вход");
+  if (scenarioArguments.length === 0) {
+    reasons.push("Добавь минимум 2 аргумента");
+  }
+  if (scenarioArguments.length < 2) {
+    reasons.push("Недостаточно аргументов для сценария");
+    reasons.push("Минимум 2 аргумента required");
+  }
+  if (!item.entryZone || !item.tradeEntry) reasons.push("не заполнен триггер входа");
+  if (!entryMethod) reasons.push("не выбран способ входа");
+  if (entryMethod && !entryMethodAllowed) reasons.push("выбери способ входа из списка: отбой, ретест, ложный пробой или пробой");
   if (!item.tradeStop) reasons.push("не заполнен плановый стоп");
   if (!item.tradeTake) reasons.push("не заполнен плановый тейк");
   if (tradeRisk <= 0) reasons.push("риск на сделку не задан");
@@ -813,7 +824,7 @@ export function validateScenarioPlan(item: SessionPlan, options: ScenarioValidat
   }
 
   return {
-    valid: reasons.length === 0 && riskValid && rrValid,
+    valid: reasons.length === 0 && riskValid && rrValid && scenarioArguments.length >= 2 && entryMethodAllowed,
     reasons: [...new Set(reasons)],
     math,
     argumentCount: scenarioArguments.length,
