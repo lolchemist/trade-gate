@@ -39,7 +39,7 @@ export function TerminalPanel({
             : "shadow-black/20";
 
   return (
-    <div className={`rounded-[1.75rem] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.028))] shadow-xl ${glowClass} backdrop-blur-xl ${className}`}>
+    <div className={`rounded-[1.75rem] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.024))] shadow-xl ${glowClass} backdrop-blur-xl ${className}`}>
       {children}
     </div>
   );
@@ -57,7 +57,7 @@ export function PanelHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        {eyebrow && <div className="text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-neutral-500">{eyebrow}</div>}
+        {eyebrow && <div className="text-xs font-medium tracking-[0.08em] text-neutral-500">{eyebrow}</div>}
         <div className="mt-1 text-lg font-semibold tracking-tight text-neutral-100">{title}</div>
       </div>
       {meta}
@@ -77,10 +77,10 @@ export function MetricTile({
   tone?: Tone;
 }) {
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 shadow-inner shadow-black/15">
-      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">{label}</div>
-      <div className={`mt-2 text-2xl font-semibold tabular-nums tracking-tight ${toneText[tone]}`}>{value}</div>
-      {detail && <div className="mt-1 text-xs text-neutral-500">{detail}</div>}
+    <div className="min-w-0 rounded-2xl border border-white/[0.06] bg-white/[0.032] p-4 shadow-inner shadow-black/10">
+      <div className="text-xs font-medium leading-snug text-neutral-500">{label}</div>
+      <div className={`mt-2 break-words text-2xl font-semibold tabular-nums tracking-tight ${toneText[tone]}`}>{value}</div>
+      {detail && <div className="mt-1 break-words text-xs leading-snug text-neutral-500">{detail}</div>}
     </div>
   );
 }
@@ -117,9 +117,9 @@ export function ProgressMeter({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold uppercase tracking-[0.2em] text-neutral-500">{label}</span>
-        <span className={`font-mono ${toneText[effectiveTone]}`}>{detail ?? `${Math.round(percent)}%`}</span>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+        <span className="min-w-0 font-medium leading-snug text-neutral-500">{label}</span>
+        <span className={`shrink-0 font-mono ${toneText[effectiveTone]}`}>{detail ?? `${Math.round(percent)}%`}</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-black/35 shadow-inner shadow-black/30">
         <div className={`h-full rounded-full bg-gradient-to-r ${toneBars[effectiveTone]} transition-all duration-700`} style={{ width: `${percent}%` }} />

@@ -5,7 +5,7 @@ type ValueSetter<T> = (value: T) => void;
 
 export function SectionTitle({ icon, title }: { icon: ReactNode; title: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+    <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
       {icon}
       {title}
     </div>
@@ -158,9 +158,9 @@ export function Toggle({
 
 export function Rule({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-4 shadow-inner">
-      <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{title}</div>
-      <div className="mt-1 text-lg font-semibold text-neutral-100">{value}</div>
+    <div className="min-w-0 rounded-2xl border border-white/[0.06] bg-white/[0.032] p-4 shadow-inner shadow-black/10">
+      <div className="text-xs font-medium leading-snug text-neutral-500">{title}</div>
+      <div className="mt-1 break-words text-lg font-semibold tabular-nums text-neutral-100">{value}</div>
     </div>
   );
 }

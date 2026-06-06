@@ -75,11 +75,11 @@ export function LoadingHero({ syncStatus }: { syncStatus: string }) {
               <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
             </div>
             <div>
-              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.28em] text-neutral-500">Поведенческий риск-терминал</div>
-              <div className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-400">Проверка торгового состояния…</div>
+              <div className="text-xs font-medium tracking-[0.08em] text-neutral-500">Проверка допуска</div>
+              <div className="mt-1 text-xs text-neutral-400">Загружаю торговое состояние…</div>
             </div>
           </div>
-          <div className="mt-8 text-4xl font-semibold uppercase leading-[0.92] tracking-[-0.045em] text-neutral-100 md:text-6xl">
+          <div className="mt-8 text-4xl font-semibold uppercase leading-[0.95] tracking-[-0.04em] text-neutral-100 md:text-6xl">
             Проверяю состояние…
           </div>
           <div className="mt-6 max-w-3xl text-base font-medium leading-relaxed text-neutral-300 md:text-lg">
@@ -134,7 +134,7 @@ function TradingHeroBase({
   const denied = forceLocked;
   const reduced = !denied && (permission.permission === "reduced" || result.status === "CAUTION" || result.status === "DANGER");
   const tone: HeroTone = denied ? "red" : reduced ? "amber" : "emerald";
-  const label = denied ? "БЛОКИРОВКА" : reduced ? "СНИЖЕННЫЙ РИСК" : "ТОРГОВЛЯ РАЗРЕШЕНА";
+  const label = denied ? "ТОРГОВЛЯ ЗАПРЕЩЕНА" : reduced ? "МОЖНО С ОГРАНИЧЕНИЕМ" : "МОЖНО ТОРГОВАТЬ";
   const permissionLabel = permission.permission === "granted" ? "РАЗРЕШЁН" : permission.permission === "reduced" ? "СНИЖЕН" : "ЗАПРЕЩЁН";
   const StatusIcon = denied ? Lock : reduced ? AlertTriangle : CheckCircle2;
   const primaryReason = result.reasons[0] ?? result.warnings[0] ?? result.subtitle;
@@ -160,12 +160,12 @@ function TradingHeroBase({
               <StatusIcon className={`h-6 w-6 ${toneClasses[tone].text}`} />
             </div>
             <div>
-              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.28em] text-neutral-500">Поведенческий риск-терминал</div>
-              <div className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-400">Сессия · {activePlanDateLabel}</div>
+              <div className="text-xs font-medium tracking-[0.08em] text-neutral-500">Допуск к сделке</div>
+              <div className="mt-1 text-xs text-neutral-400">Сессия · {activePlanDateLabel}</div>
             </div>
           </div>
 
-          <div className={`mt-8 text-4xl font-semibold uppercase leading-[0.92] tracking-[-0.045em] ${toneClasses[tone].text} md:text-6xl lg:text-7xl`}>
+          <div className={`mt-8 text-4xl font-semibold uppercase leading-[0.95] tracking-[-0.04em] ${toneClasses[tone].text} md:text-5xl lg:text-6xl`}>
             {label}
           </div>
           <div className="mt-6 max-w-3xl text-base font-medium leading-relaxed text-neutral-200 md:text-lg">{primaryReason}</div>
@@ -185,7 +185,7 @@ function TradingHeroBase({
           <HeroMetric label="Макс. риск" value={formatCurrency(permission.maxAllowedRisk)} tone={tone} />
           <HeroMetric label="Риск-скор" value={String(result.risk)} tone={tone} />
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-relaxed text-neutral-300">
-            <div className="mb-1 flex items-center gap-2 text-[0.66rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-neutral-500">
               <Activity className="h-3.5 w-3.5" />
               Инструкция
             </div>
@@ -200,7 +200,7 @@ function TradingHeroBase({
 function HeroMetric({ label, value, tone }: { label: string; value: string; tone: HeroTone }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 shadow-inner shadow-black/20">
-      <div className="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">{label}</div>
+      <div className="text-xs font-medium text-neutral-500">{label}</div>
       <div className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${toneClasses[tone].text}`}>{value}</div>
     </div>
   );

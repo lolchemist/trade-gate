@@ -30,16 +30,16 @@ export function RiskBudgetCard({
 
   return (
     <TerminalPanel className="p-5" glow={locked ? "red" : plannedRiskWarning || usedPercent >= 80 ? "amber" : "emerald"}>
-      <PanelHeader eyebrow="Риск дня" title="Дневной риск-бюджет" meta={<WalletCards className="h-5 w-5 text-neutral-500" />} />
+      <PanelHeader eyebrow="Риск дня" title="Дневной риск" meta={<WalletCards className="h-5 w-5 text-neutral-500" />} />
       <div className="mt-5 space-y-4">
         <ProgressMeter label="Использованный риск" value={usedRisk} max={Math.max(budget, 1)} detail={`${Math.round(usedPercent)}%`} tone={locked ? "red" : usedPercent >= 80 ? "amber" : "emerald"} />
         <ProgressMeter label="Запланированный риск" value={plannedRiskUsed} max={Math.max(budget, 1)} detail={`${Math.round(plannedPercent)}%`} tone={plannedRiskWarning ? "amber" : "neutral"} />
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
         <MetricTile label="Бюджет" value={formatCurrency(budget)} />
         <MetricTile label="Запланировано" value={formatCurrency(plannedRiskUsed)} tone={plannedRiskWarning ? "amber" : "neutral"} />
         <MetricTile label="Использовано" value={formatCurrency(usedRisk)} tone={locked ? "red" : usedRisk > 0 ? "amber" : "neutral"} />
-        <MetricTile label="Факт. убыток" value={formatCurrency(realizedLossUsed)} tone={realizedLossUsed > 0 ? "amber" : "neutral"} />
+        <MetricTile label="Закрытый убыток" value={formatCurrency(realizedLossUsed)} tone={realizedLossUsed > 0 ? "amber" : "neutral"} />
         <MetricTile label="Открытый риск" value={formatCurrency(activeRiskExposureUsed)} tone={activeRiskExposureUsed > 0 ? "amber" : "neutral"} />
         <MetricTile label="Остаток" value={formatCurrency(remainingRisk)} tone={locked ? "red" : "emerald"} />
       </div>

@@ -17,17 +17,17 @@ export function BehavioralRiskPanel({ behavioralRisk }: { behavioralRisk: Behavi
   return (
     <TerminalPanel className="p-5" glow={tone}>
       <PanelHeader
-        eyebrow="Behavioral engine"
+        eyebrow="Поведение"
         title="Качество решений во время сессии"
         meta={<StatusPill tone={tone}>{stateLabels[behavioralRisk.state]}</StatusPill>}
       />
       <div className="mt-4 text-sm leading-relaxed text-neutral-400">{behavioralRisk.instruction}</div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-4">
-        <MetricTile label="Revenge score" value={`${behavioralRisk.revengeScore}/100`} tone={behavioralRisk.revengeScore >= 60 ? "red" : behavioralRisk.revengeScore >= 30 ? "amber" : "emerald"} />
+      <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-3">
+        <MetricTile label="Риск отбиться" value={`${behavioralRisk.revengeScore}/100`} tone={behavioralRisk.revengeScore >= 60 ? "red" : behavioralRisk.revengeScore >= 30 ? "amber" : "emerald"} />
         <MetricTile label="Режим" value={modeLabel(behavioralRisk.mode)} tone={tone} />
         <MetricTile label="Cooldown" value={behavioralRisk.cooldownMinutes > 0 ? `${behavioralRisk.cooldownMinutes}м` : "—"} tone={behavioralRisk.cooldownMinutes > 0 ? "amber" : "neutral"} />
-        <MetricTile label="Max risk" value={behavioralRisk.maxAllowedRisk > 0 ? `$${behavioralRisk.maxAllowedRisk.toFixed(0)}` : "$0"} tone={tone} />
+        <MetricTile label="Макс. риск" value={behavioralRisk.maxAllowedRisk > 0 ? `$${behavioralRisk.maxAllowedRisk.toFixed(0)}` : "$0"} tone={tone} />
       </div>
 
       <div className="mt-5 grid gap-5">
@@ -56,7 +56,7 @@ export function BehavioralRiskPanel({ behavioralRisk }: { behavioralRisk: Behavi
 function SignalList({ title, items, empty, icon }: { title: string; items: string[]; empty: string; icon: ReactNode }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+      <div className="mb-3 flex items-center gap-2 text-xs font-medium text-neutral-500">
         {icon}
         {title}
       </div>

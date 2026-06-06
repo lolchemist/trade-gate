@@ -26,11 +26,11 @@ export function PropRulesCard({
   return (
     <TerminalPanel className="p-5" glow={dailyLossUsed >= personalDailyStop && personalDailyStop > 0 ? "red" : dailyLossUsed >= propDailyLossLimit * 0.8 && propDailyLossLimit > 0 ? "amber" : "neutral"}>
       <PanelHeader eyebrow="Проп-лимиты" title="Лимиты аккаунта" meta={<Landmark className="h-5 w-5 text-neutral-500" />} />
-      <div className="mt-5 grid gap-5">
-        <ProgressMeter label="До личного дневного стопа" value={dailyLossUsed} max={Math.max(personalDailyStop, 1)} detail={`${formatCurrency(dailyLossUsed)} / ${formatCurrency(personalDailyStop)}`} tone="amber" inverse />
-        <ProgressMeter label="До лимита проп-фирмы" value={dailyLossUsed} max={Math.max(propDailyLossLimit, 1)} detail={`${formatCurrency(dailyLossUsed)} / ${formatCurrency(propDailyLossLimit)}`} tone="amber" inverse />
-        <ProgressMeter label="До максимального убытка" value={totalLossUsed} max={Math.max(effectiveMaxLoss, 1)} detail={`${formatCurrency(totalLossUsed)} / ${formatCurrency(effectiveMaxLoss)}`} tone="red" inverse />
-        <ProgressMeter label="Прогресс к профит-таргету" value={profitProgress} max={Math.max(profitTarget, 1)} detail={`${formatCurrency(profitProgress)} / ${formatCurrency(profitTarget)}`} tone="emerald" />
+      <div className="mt-5 grid gap-4">
+        <ProgressMeter label="Личный лимит" value={dailyLossUsed} max={Math.max(personalDailyStop, 1)} detail={`${formatCurrency(dailyLossUsed)} / ${formatCurrency(personalDailyStop)}`} tone="amber" inverse />
+        <ProgressMeter label="FTMO лимит" value={dailyLossUsed} max={Math.max(propDailyLossLimit, 1)} detail={`${formatCurrency(dailyLossUsed)} / ${formatCurrency(propDailyLossLimit)}`} tone="amber" inverse />
+        <ProgressMeter label="Макс. убыток" value={totalLossUsed} max={Math.max(effectiveMaxLoss, 1)} detail={`${formatCurrency(totalLossUsed)} / ${formatCurrency(effectiveMaxLoss)}`} tone="red" inverse />
+        <ProgressMeter label="Профит-таргет" value={profitProgress} max={Math.max(profitTarget, 1)} detail={`${formatCurrency(profitProgress)} / ${formatCurrency(profitTarget)}`} tone="emerald" />
       </div>
       {!compact && (
         <div className="mt-5 grid gap-3 sm:grid-cols-3">

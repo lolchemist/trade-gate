@@ -44,13 +44,13 @@ export function ClosedDayHero({
               <CheckCircle2 className="h-5 w-5 text-emerald-100" />
             </div>
             <div>
-              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-emerald-100/55">Торговый день закрыт</div>
-              <div className="mt-1 text-xs uppercase tracking-[0.2em] text-neutral-400">Сессия · {activePlanDateLabel}</div>
+              <div className="text-xs font-medium tracking-[0.08em] text-emerald-100/60">Торговый день закрыт</div>
+              <div className="mt-1 text-xs text-neutral-400">Сессия · {activePlanDateLabel}</div>
             </div>
           </div>
 
-          <div className="mt-6 max-w-3xl text-3xl font-semibold leading-tight tracking-[-0.03em] text-emerald-50 md:text-5xl">
-            Торговый день завершён
+          <div className="mt-6 max-w-3xl text-4xl font-semibold uppercase leading-[0.95] tracking-[-0.04em] text-emerald-50 md:text-6xl">
+            День закрыт
           </div>
           <div className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-neutral-200">{message}</div>
           <div className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
@@ -66,7 +66,7 @@ export function ClosedDayHero({
         <div className="rounded-[1.5rem] border border-white/[0.08] bg-white/[0.035] p-3 shadow-inner shadow-black/20 md:p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
-              <div className="flex items-center gap-2 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              <div className="flex items-center gap-2 text-xs font-medium text-neutral-500">
                 <Sparkles className="h-3.5 w-3.5 text-emerald-100/70" />
                 Финрезультат дня
               </div>
@@ -94,7 +94,7 @@ export function ClosedDayHero({
 function ClosedMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3 shadow-inner shadow-black/20">
-      <div className="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">{label}</div>
+      <div className="text-xs font-medium text-neutral-500">{label}</div>
       <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-emerald-50">{value}</div>
     </div>
   );
@@ -103,7 +103,7 @@ function ClosedMetric({ label, value }: { label: string; value: string }) {
 function SummaryPill({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-black/20 px-3 py-2">
-      <div className="text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-neutral-500">{label}</div>
+      <div className="text-xs font-medium text-neutral-500">{label}</div>
       <div className="mt-1 font-mono text-sm font-semibold text-neutral-100">{value}</div>
     </div>
   );
