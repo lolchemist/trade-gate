@@ -2,7 +2,7 @@ import { createDefaultFtmoDailyState } from "@/constants/trade-gate";
 import type { FTMODailyState, FTMORiskMetrics, FTMOSettings } from "@/types/trade-gate";
 
 export function getFtmoDailyState(states: Record<string, FTMODailyState>, ftmoTradingDay: string, accountSize: string | number) {
-  return states[ftmoTradingDay] ?? createDefaultFtmoDailyState(ftmoTradingDay, String(accountSize || 100000));
+  return states[ftmoTradingDay] ?? createDefaultFtmoDailyState(ftmoTradingDay, String(accountSize || 10000));
 }
 
 export function calculateFtmoRiskMetrics(settings: FTMOSettings, dailyState: FTMODailyState): FTMORiskMetrics {

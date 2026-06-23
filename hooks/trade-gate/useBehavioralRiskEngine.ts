@@ -85,7 +85,7 @@ function calculateBehavioralRisk({
   const largeRiskIncrease = hasLargeRiskIncrease(orderedFacts);
   const weakScenarioDescriptions = activePlans.some(hasWeakScenarioDescription);
   const emotionalSpike = Number(riskControls.anxiety) >= 8 || Number(riskControls.urge) >= 8 || Number(riskControls.anger) >= 7 || emotionalSlope >= 5;
-  const accountSize = Number(accountSettings.accountSize) || 100000;
+  const accountSize = Number(accountSettings.accountSize) || 10000;
   const dailyRiskBudget = Number(todayMetrics.dailyRiskBudget.budgetUsd) || 0;
   const profitEuphoria = (dailyRiskBudget > 0 && todayMetrics.realizedPnl >= dailyRiskBudget * 2) || todayMetrics.realizedPnl >= accountSize * 0.015;
   const lateSessionFatigue = isLateSession(orderedFacts);

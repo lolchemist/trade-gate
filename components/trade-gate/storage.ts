@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { persistNormalizedTradeGateState } from "@/lib/trade-gate-db/normalized-sync";
-import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
+import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_DAILY_RISK_BUDGET, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
 import { calculateScenarioExecutionRisk, createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields, withCalculatedActualRisk } from "./utils";
-import type { ArchivedPlan, FTMODailyState, FTMOSettings, LocalSessionSettings, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
+import type { AccountSettings, ArchivedPlan, DailyRiskBudget, FTMODailyState, FTMOSettings, LocalSessionSettings, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
 type CloudStateRow = {
   data: unknown;
@@ -481,7 +481,7 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     archivedPlans,
     instrumentImages: normalizeInstrumentImages(state.instrumentImages, defaultState?.instrumentImages),
     marketIdeaNotes: state.marketIdeaNotes ?? defaultState?.marketIdeaNotes ?? {},
-    dailyRiskBudgets: state.dailyRiskBudgets ?? defaultState?.dailyRiskBudgets ?? {},
+    dailyRiskBudgets: normalizeDailyRiskBudgets(state.dailyRiskBudgets, defaultState?.dailyRiskBudgets),
     tradingDayStatusByDate: tradingDayStatuses,
     tradingDayStatuses,
     tradingDayReopenedAtByDate,
@@ -490,7 +490,7 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
     ftmoSettings,
     localSessionSettings,
     ftmoDailyStateByFtmoTradingDay,
-    accountSettings: { ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultState?.accountSettings ?? {}), ...(state.accountSettings ?? {}) },
+    accountSettings: normalizeAccountSettings(state.accountSettings, defaultState?.accountSettings),
     emergencyNotes,
     emergencyLock,
     activePlanDate,
@@ -499,15 +499,66 @@ function normalizePlanningState(state: Partial<PlanningState>, defaultState?: Pl
   };
 }
 
+function normalizeAccountSettings(settings?: Partial<AccountSettings>, defaultSettings?: AccountSettings): AccountSettings {
+  return migrateLegacyAccountSettings({ ...DEFAULT_ACCOUNT_SETTINGS, ...(defaultSettings ?? {}), ...(settings ?? {}) });
+}
+
+function migrateLegacyAccountSettings(settings: AccountSettings): AccountSettings {
+  return {
+    ...settings,
+    accountSize: migrateLegacyAmount(settings.accountSize, "100000", DEFAULT_ACCOUNT_SETTINGS.accountSize),
+    propDailyLossLimit: migrateLegacyAmount(settings.propDailyLossLimit, "5000", DEFAULT_ACCOUNT_SETTINGS.propDailyLossLimit),
+    personalDailyStop: migrateLegacyAmount(settings.personalDailyStop, "1000", DEFAULT_ACCOUNT_SETTINGS.personalDailyStop),
+    personalMaxRiskPerTrade: migrateLegacyAmount(settings.personalMaxRiskPerTrade, "500", DEFAULT_ACCOUNT_SETTINGS.personalMaxRiskPerTrade),
+    maxLossLimit: migrateLegacyAmount(settings.maxLossLimit, "10000", DEFAULT_ACCOUNT_SETTINGS.maxLossLimit),
+    personalMaxLoss: migrateLegacyAmount(settings.personalMaxLoss, "3000", DEFAULT_ACCOUNT_SETTINGS.personalMaxLoss),
+    profitTarget: migrateLegacyAmount(settings.profitTarget, "10000", DEFAULT_ACCOUNT_SETTINGS.profitTarget),
+  };
+}
+
 function normalizeFtmoSettings(settings?: Partial<FTMOSettings>, defaultSettings?: FTMOSettings): FTMOSettings {
   const merged = { ...DEFAULT_FTMO_SETTINGS, ...(defaultSettings ?? {}), ...(settings ?? {}) };
+  const migrated = migrateLegacyFtmoSettings(merged);
   return {
-    ...merged,
+    ...migrated,
     accountType: "FTMO 2-Step",
-    challengePhase: merged.challengePhase === "Phase 2" || merged.challengePhase === "Funded" ? merged.challengePhase : "Phase 1",
-    bestDayRuleEnabled: Boolean(merged.bestDayRuleEnabled),
-    hardBestDayRuleEnforcement: Boolean(merged.hardBestDayRuleEnforcement),
+    challengePhase: migrated.challengePhase === "Phase 2" || migrated.challengePhase === "Funded" ? migrated.challengePhase : "Phase 1",
+    bestDayRuleEnabled: Boolean(migrated.bestDayRuleEnabled),
+    hardBestDayRuleEnforcement: Boolean(migrated.hardBestDayRuleEnforcement),
   };
+}
+
+function migrateLegacyFtmoSettings(settings: FTMOSettings): FTMOSettings {
+  return {
+    ...settings,
+    accountSize: migrateLegacyAmount(settings.accountSize, "100000", DEFAULT_FTMO_SETTINGS.accountSize),
+    personalDailyStop: migrateLegacyAmount(settings.personalDailyStop, "1000", DEFAULT_FTMO_SETTINGS.personalDailyStop),
+    personalMaxLoss: migrateLegacyAmount(settings.personalMaxLoss, "3000", DEFAULT_FTMO_SETTINGS.personalMaxLoss),
+    personalMaxRiskPerTrade: migrateLegacyAmount(settings.personalMaxRiskPerTrade, "500", DEFAULT_FTMO_SETTINGS.personalMaxRiskPerTrade),
+    safetyBuffer: migrateLegacyAmount(settings.safetyBuffer, "250", DEFAULT_FTMO_SETTINGS.safetyBuffer),
+  };
+}
+
+function migrateLegacyAmount<T extends string | number | undefined>(value: T, legacyValue: string, nextValue: string): T | string {
+  if (String(value ?? "").trim() === legacyValue) return nextValue;
+  return value ?? nextValue;
+}
+
+function normalizeDailyRiskBudgets(
+  budgets?: Record<string, Partial<DailyRiskBudget>>,
+  defaultBudgets?: Record<string, DailyRiskBudget>
+): Record<string, DailyRiskBudget> {
+  const merged = { ...(defaultBudgets ?? {}), ...(budgets ?? {}) };
+
+  return Object.fromEntries(
+    Object.entries(merged).map(([planDate, budget]) => [
+      planDate,
+      {
+        planDate: budget?.planDate ?? planDate,
+        budgetUsd: migrateLegacyAmount(budget?.budgetUsd, "1000", DEFAULT_DAILY_RISK_BUDGET),
+      },
+    ])
+  );
 }
 
 function normalizeLocalSessionSettings(settings?: Partial<LocalSessionSettings>, defaultSettings?: LocalSessionSettings): LocalSessionSettings {
@@ -533,11 +584,19 @@ function normalizeFtmoDailyStateByDay(
 }
 
 function normalizeFtmoDailyState(value: Partial<FTMODailyState> | undefined, ftmoTradingDay: string, accountSize: string): FTMODailyState {
-  return {
+  const normalized = {
     ...createDefaultFtmoDailyState(ftmoTradingDay, accountSize),
     ...(value ?? {}),
     ftmoTradingDay: value?.ftmoTradingDay ?? ftmoTradingDay,
     updatedAt: value?.updatedAt ?? "",
+  };
+
+  return {
+    ...normalized,
+    startOfDayBalance: migrateLegacyAmount(normalized.startOfDayBalance, "100000", accountSize),
+    startOfDayEquity: migrateLegacyAmount(normalized.startOfDayEquity, "100000", accountSize),
+    currentBalance: migrateLegacyAmount(normalized.currentBalance, "100000", accountSize),
+    currentEquity: migrateLegacyAmount(normalized.currentEquity, "100000", accountSize),
   };
 }
 
@@ -711,7 +770,8 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArgu
     scenarioInvalidation: plan.scenarioInvalidation ?? "",
     scenarioConfidence: plan.scenarioConfidence ?? "70",
     scenarioQuality: plan.scenarioQuality ?? "",
-    riskBudgetAllocation: plan.riskBudgetAllocation ?? plan.tradeRisk ?? "",
+    tradeRisk: migrateLegacyAmount(plan.tradeRisk, "500", DEFAULT_PERSONAL_MAX_RISK_PER_TRADE),
+    riskBudgetAllocation: migrateLegacyAmount(plan.riskBudgetAllocation ?? plan.tradeRisk, "500", DEFAULT_PERSONAL_MAX_RISK_PER_TRADE),
     tradePointValue: legacyPointValue ? getPointValuePerLot(symbol) : plan.tradePointValue || getPointValuePerLot(symbol),
     trades: normalizeScenarioTrades(plan, fallbackPlan),
   };
@@ -721,7 +781,12 @@ function normalizeSessionPlan(plan: SessionPlan, fallbackDate: string, tradeArgu
 
 function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): ScenarioTrade[] {
   const rawTrades = Array.isArray(plan.trades) ? plan.trades : [];
-  const planForMath = { ...fallbackPlan, ...plan };
+  const planForMath = {
+    ...fallbackPlan,
+    ...plan,
+    tradeRisk: migrateLegacyAmount(plan.tradeRisk, "500", DEFAULT_PERSONAL_MAX_RISK_PER_TRADE),
+    riskBudgetAllocation: migrateLegacyAmount(plan.riskBudgetAllocation ?? plan.tradeRisk, "500", DEFAULT_PERSONAL_MAX_RISK_PER_TRADE),
+  };
   const normalizedTrades = rawTrades.map((trade, index) => {
     const normalizedTrade = {
       ...createScenarioTrade(planForMath, index === 0 ? "trade_1" : "re_entry", trade.id || `legacy-trade-${plan.id}-${index}`),

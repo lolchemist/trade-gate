@@ -1,4 +1,4 @@
-import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
+import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import type {
   ArchivedPlan,
@@ -116,12 +116,12 @@ export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_
     tradeEntry: "",
     tradeStop: "",
     tradeTake: "",
-    tradeRisk: "500",
+    tradeRisk: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
     tradePointValue: getPointValuePerLot(normalizedSymbol),
     scenarioInvalidation: "",
     scenarioConfidence: "70",
     scenarioQuality: "",
-    riskBudgetAllocation: "500",
+    riskBudgetAllocation: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
     trades: [],
   };
 }
@@ -643,7 +643,7 @@ export function calculatePermission({
   const maxAdditionalTrades = Math.max(0, 3 - tradesToday);
 
   if (status === "DANGER" || status === "CAUTION" || readinessFloor < 70 || revengeDetectorScore >= 35 || consecutiveStops >= 1 || tradesToday >= 2) {
-    const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 250));
+    const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 25));
     return {
       permission: "reduced",
       mode: "reduced",
@@ -655,7 +655,7 @@ export function calculatePermission({
     };
   }
 
-  const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 500));
+  const maxAllowedRisk = Math.max(0, Math.min(dailyRiskRemaining, scenarioRisk || dailyRiskRemaining, 50));
   return {
     permission: "granted",
     mode: "normal",

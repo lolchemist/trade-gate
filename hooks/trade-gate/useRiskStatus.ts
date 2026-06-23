@@ -212,10 +212,10 @@ function calculateRiskStatus({
     reasons.push("дневной лимит убытка достигнут по PnL");
   }
 
-  if (dailyLossNumber <= -1000) {
+  if (dailyLossNumber <= LOSS_LIMIT) {
     riskScore += 50;
     readiness.discipline -= 50;
-    reasons.push("дневной убыток ниже -1000$: торговля должна быть остановлена");
+    reasons.push(`дневной убыток ниже ${LOSS_LIMIT}$: торговля должна быть остановлена`);
   }
 
   if (personalDailyStopHit) {
@@ -400,7 +400,7 @@ function calculateRiskStatus({
   const hardLock =
     isLocked ||
     dailyPnlNumber <= LOSS_LIMIT ||
-    dailyLossNumber <= -1000 ||
+    dailyLossNumber <= LOSS_LIMIT ||
     personalDailyStopHit ||
     propDailyLossHit ||
     dailyRiskRemaining <= 0 ||

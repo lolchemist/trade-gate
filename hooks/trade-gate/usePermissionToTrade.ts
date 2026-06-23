@@ -114,8 +114,8 @@ export function usePermissionToTrade({
       return {
         permission: localSessionStatus === "closed" ? "denied" : "reduced",
         mode: localSessionStatus === "closed" ? "sim_only" : "reduced",
-        maxAllowedRisk: localSessionStatus === "closed" ? 0 : Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, 250)),
-        maxAllowedLot: localSessionStatus === "closed" ? 0 : scaleLot(Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, 250))),
+        maxAllowedRisk: localSessionStatus === "closed" ? 0 : Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, 25)),
+        maxAllowedLot: localSessionStatus === "closed" ? 0 : scaleLot(Math.max(0, Math.min(dailyRiskRemaining, ftmoAllowedRisk, 25))),
         maxAdditionalTrades: localSessionStatus === "closed" ? 0 : 1,
         reEntryAllowed: false,
         instruction: localSessionStatus === "closed" ? "Сейчас не торговый день по локальной сессии. Только разбор или симуляция." : "Локальная сессия закончилась. Только сниженный риск, без re-entry.",

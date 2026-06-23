@@ -907,9 +907,9 @@ export default function TradeGateApp() {
                 />
                 <Card className="rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-xl shadow-black/15 backdrop-blur-xl">
                   <CardContent className="p-5">
-                    <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Правило для 100k аккаунта" />
+                    <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Правило для 10k аккаунта" />
                     <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
-                      <Rule title="Дневной стоп" value="$1000" />
+                      <Rule title="Дневной стоп" value="$100" />
                       <Rule title="Риск на сделку" value="0.25–0.5%" />
                       <Rule title="Максимум сделок" value="1–2 идеи" />
                     </div>

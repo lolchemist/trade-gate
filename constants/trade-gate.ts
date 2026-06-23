@@ -2,13 +2,13 @@ import type { AccountSettings, EntryType, FTMODailyState, FTMOSettings, LocalSes
 
 export const STORAGE_KEY = "trade-gate-state-v1";
 
-export const LOSS_LIMIT = -1000;
+export const LOSS_LIMIT = -100;
 
-export const DEFAULT_DAILY_RISK_BUDGET = "1000";
+export const DEFAULT_DAILY_RISK_BUDGET = "100";
 
 export const MIN_SCENARIO_RR = 3;
 
-export const DEFAULT_PERSONAL_MAX_RISK_PER_TRADE = "500";
+export const DEFAULT_PERSONAL_MAX_RISK_PER_TRADE = "50";
 
 export const MAX_INSTRUMENT_IMAGE_BYTES = 750_000;
 
@@ -47,19 +47,19 @@ export const ENTRY_METHOD_OPTIONS = [
 ];
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
-  accountSize: "100000",
-  propDailyLossLimit: "5000",
-  personalDailyStop: "1000",
+  accountSize: "10000",
+  propDailyLossLimit: "500",
+  personalDailyStop: "100",
   personalMaxRiskPerTrade: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
-  maxLossLimit: "10000",
-  personalMaxLoss: "3000",
-  profitTarget: "10000",
+  maxLossLimit: "1000",
+  personalMaxLoss: "300",
+  profitTarget: "1000",
 };
 
 export const DEFAULT_FTMO_SETTINGS: FTMOSettings = {
   accountType: "FTMO 2-Step",
   challengePhase: "Phase 1",
-  accountSize: "100000",
+  accountSize: "10000",
   ftmoTimezone: "Europe/Prague",
   ftmoResetTime: "00:00",
   maxDailyLossPercent: "5",
@@ -68,10 +68,10 @@ export const DEFAULT_FTMO_SETTINGS: FTMOSettings = {
   phase2ProfitTargetPercent: "5",
   fundedProfitTarget: "0",
   minimumTradingDays: "0",
-  personalDailyStop: "1000",
-  personalMaxLoss: "3000",
+  personalDailyStop: "100",
+  personalMaxLoss: "300",
   personalMaxRiskPerTrade: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
-  safetyBuffer: "250",
+  safetyBuffer: "25",
   bestDayRuleEnabled: false,
   hardBestDayRuleEnforcement: false,
 };
