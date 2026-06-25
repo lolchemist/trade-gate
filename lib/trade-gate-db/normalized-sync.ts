@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateActiveScenarioRisk, calculateScenarioExecutionRisk, calculateScenarioTradeMath, getExecutedScenarioTrades, getPlanEntryMethod, getScenarioArguments, getScenarioTrades } from "@/components/trade-gate/utils";
+import { calculateDailyRiskUsage } from "@/lib/trade-gate/risk";
 import type { DailyRiskBudget, FTMODailyState, PlanningState, RiskControlState, ScenarioTrade, SessionPlan } from "@/types/trade-gate";
 
 type JsonRecord = Record<string, unknown>;
@@ -63,6 +64,12 @@ async function upsertTradingDays(supabase: SupabaseClient, state: PlanningState,
     }, 0);
     const activeRisk = plansForDate.filter((plan) => plan.status === "active").reduce((total, plan) => total + calculateActiveScenarioRisk(plan), 0);
     const totalPlannedRisk = plansForDate.filter((plan) => plan.status === "planned").reduce((total, plan) => total + (Number(plan.tradeRisk) || 0), 0);
+    const dailyBudget = Number(state.dailyRiskBudgets[planDate]?.budgetUsd) || 0;
+    const riskUsage = calculateDailyRiskUsage({
+      maxDailyLossUsd: dailyBudget,
+      closedPnlUsd: realizedPnl,
+      activeRiskUsd: activeRisk,
+    });
     const status = state.tradingDayStatuses[planDate] ?? state.tradingDayStatusByDate[planDate] ?? "active";
 
     return {
@@ -76,9 +83,11 @@ async function upsertTradingDays(supabase: SupabaseClient, state: PlanningState,
       payload: {
         riskControls: state.riskControlsByDate[planDate],
         dailyRiskBudget: state.dailyRiskBudgets[planDate],
-        usedRisk: closedLossToday + activeRisk,
+        usedRisk: riskUsage.usedRiskUsd,
+        remainingRisk: riskUsage.remainingRiskUsd,
         activeRisk,
         closedLossToday,
+        closedPnl: realizedPnl,
       },
       updated_at: savedAt,
     };

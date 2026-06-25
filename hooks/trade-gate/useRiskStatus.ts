@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { LOSS_LIMIT } from "@/constants/trade-gate";
 import { getBestValidScenario, validateScenarioPlan } from "@/components/trade-gate/utils";
 import type { BehavioralRiskResult } from "@/hooks/trade-gate/useBehavioralRiskEngine";
 import type { FTMORiskMetrics, GateResult, ReadinessScores, SessionPlan, TradingSessionStatus } from "@/types/trade-gate";
@@ -126,7 +125,6 @@ function calculateRiskStatus({
   urge,
   anger,
   dailyPnl,
-  dailyLoss,
   consecutiveStops,
   lockUntil,
   tradesToday,
@@ -161,7 +159,6 @@ function calculateRiskStatus({
   const now = new Date();
   const isLocked = Boolean(lockUntil && new Date(lockUntil) > now);
   const dailyPnlNumber = Number(dailyPnl);
-  const dailyLossNumber = Number(dailyLoss);
   const stopsNumber = Number(consecutiveStops);
   const tradesTodayNumber = Number(tradesToday);
   const scenarioValidationOptions = {
@@ -204,18 +201,6 @@ function calculateRiskStatus({
     riskScore += 3;
     readiness.emotional -= 20;
     reasons.push("злость / раздражение: риск торговли из желания отбиться");
-  }
-
-  if (dailyPnlNumber <= LOSS_LIMIT) {
-    riskScore += 50;
-    readiness.discipline -= 50;
-    reasons.push("дневной лимит убытка достигнут по PnL");
-  }
-
-  if (dailyLossNumber <= LOSS_LIMIT) {
-    riskScore += 50;
-    readiness.discipline -= 50;
-    reasons.push(`дневной убыток ниже ${LOSS_LIMIT}$: торговля должна быть остановлена`);
   }
 
   if (personalDailyStopHit) {
@@ -399,8 +384,6 @@ function calculateRiskStatus({
 
   const hardLock =
     isLocked ||
-    dailyPnlNumber <= LOSS_LIMIT ||
-    dailyLossNumber <= LOSS_LIMIT ||
     personalDailyStopHit ||
     propDailyLossHit ||
     dailyRiskRemaining <= 0 ||

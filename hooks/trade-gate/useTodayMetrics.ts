@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { calculateActiveScenarioRisk, calculatePlannedRisk, getDailyRiskBudget, getExecutedScenarioTrades, isScenarioClosed } from "@/components/trade-gate/utils";
+import { calculateConsecutiveStopCount, calculateDailyRiskUsage } from "@/lib/trade-gate/risk";
 import type { AccountSettings, ArchivedPlan, DailyRiskBudget, ScenarioTrade, SessionPlan, TodayMetrics } from "@/types/trade-gate";
 
 const executedStatuses = new Set<ScenarioTrade["status"]>(["executed", "take", "stop", "manual_profit", "manual_loss", "breakeven"]);
@@ -42,13 +43,28 @@ function calculateTodayMetrics(
   const activeRiskExposureUsed = activePlansForDate
     .filter((plan) => plan.status === "active")
     .reduce((total, plan) => total + calculateActiveScenarioRisk(plan), 0);
-  const riskUsedTotal = realizedLossUsed + activeRiskExposureUsed;
-  const remainingRisk = budget - riskUsedTotal;
   const personalDailyStop = Number(accountSettings.personalDailyStop) || 0;
   const propDailyLossLimit = Number(accountSettings.propDailyLossLimit) || 0;
   const personalMaxLoss = Number(accountSettings.personalMaxLoss) || 0;
   const maxLossLimit = Number(accountSettings.maxLossLimit) || 0;
   const effectiveMaxLoss = personalMaxLoss > 0 ? Math.min(personalMaxLoss, maxLossLimit || personalMaxLoss) : maxLossLimit;
+  const dailyRiskUsage = calculateDailyRiskUsage({
+    maxDailyLossUsd: budget,
+    closedPnlUsd: realizedPnl,
+    activeRiskUsd: activeRiskExposureUsed,
+  });
+  const personalDailyRiskUsage = calculateDailyRiskUsage({
+    maxDailyLossUsd: personalDailyStop,
+    closedPnlUsd: realizedPnl,
+    activeRiskUsd: activeRiskExposureUsed,
+  });
+  const propDailyRiskUsage = calculateDailyRiskUsage({
+    maxDailyLossUsd: propDailyLossLimit,
+    closedPnlUsd: realizedPnl,
+    activeRiskUsd: activeRiskExposureUsed,
+  });
+  const riskUsedTotal = dailyRiskUsage.usedRiskUsd;
+  const remainingRisk = dailyRiskUsage.remainingRiskUsd;
 
   return {
     planDate: activePlanDate,
@@ -62,34 +78,17 @@ function calculateTodayMetrics(
     remainingRisk,
     dailyPnlForRiskStatus: realizedPnl,
     dailyLossForRiskStatus: -realizedLossUsed,
-    personalDailyStopHit: personalDailyStop > 0 && realizedLossUsed >= personalDailyStop,
-    propDailyLossClose: propDailyLossLimit > 0 && realizedLossUsed >= propDailyLossLimit * 0.8,
-    propDailyLossHit: propDailyLossLimit > 0 && realizedLossUsed >= propDailyLossLimit,
-    propDailyLossUsed: realizedLossUsed,
+    personalDailyStopHit: personalDailyStop > 0 && personalDailyRiskUsage.remainingRiskUsd <= 0,
+    propDailyLossClose: propDailyLossLimit > 0 && propDailyRiskUsage.remainingRiskUsd <= propDailyLossLimit * 0.2,
+    propDailyLossHit: propDailyLossLimit > 0 && propDailyRiskUsage.remainingRiskUsd <= 0,
+    propDailyLossUsed: propDailyRiskUsage.usedRiskUsd,
     totalLossUsed: effectiveMaxLoss > 0 ? realizedLossUsed : realizedLossUsed,
     profitProgress: Math.max(0, realizedPnl),
     tradesToday: executedTrades.length,
-    consecutiveStops: calculateConsecutiveStops(executedTrades),
+    consecutiveStops: calculateConsecutiveStopCount(executedTrades),
     stopCount: executedTrades.filter((item) => item.trade.status === "stop").length,
     takeCount: executedTrades.filter((item) => item.trade.status === "take").length,
     manualCloseCount: executedTrades.filter((item) => item.trade.status === "manual_profit" || item.trade.status === "manual_loss" || item.trade.status === "breakeven").length,
     noEntryCount: [...finalPlansForDate, ...archivedForDate].filter((plan) => plan.status === "no_entry" || plan.resultStatus === "no_entry" || getExecutedScenarioTrades(plan).length === 0).length,
   };
-}
-
-function calculateConsecutiveStops(trades: { trade: ScenarioTrade; archivedAt: string; planId: number }[]) {
-  const sorted = [...trades].sort((a, b) => getTradeOrder(a) - getTradeOrder(b) || a.planId - b.planId);
-  let count = 0;
-
-  for (let index = sorted.length - 1; index >= 0; index -= 1) {
-    if (sorted[index].trade.status !== "stop") break;
-    count += 1;
-  }
-
-  return count;
-}
-
-function getTradeOrder(item: { trade: ScenarioTrade; archivedAt: string; planId: number }) {
-  const timestamp = Date.parse((item.archivedAt || item.trade.executedAt).replace(" ", "T"));
-  return Number.isFinite(timestamp) ? timestamp : item.planId;
 }
