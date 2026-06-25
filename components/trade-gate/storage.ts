@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import { persistNormalizedTradeGateState } from "@/lib/trade-gate-db/normalized-sync";
-import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_DAILY_RISK_BUDGET, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, DEFAULT_TRADE_ARGUMENTS, STORAGE_KEY } from "./constants";
+import { createDefaultFtmoDailyState, DEFAULT_ACCOUNT_SETTINGS, DEFAULT_DAILY_RISK_BUDGET, DEFAULT_FTMO_SETTINGS, DEFAULT_LOCAL_SESSION_SETTINGS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, DEFAULT_TRADE_ARGUMENTS, FTMO_ACCOUNT_TYPE, STORAGE_KEY } from "./constants";
 import { calculateScenarioExecutionRisk, createDefaultRiskControls, createScenarioTrade, createSessionPlan, dedupeTextList, getInitialPlanDate, getInstrumentImageKey, getPlanEntryMethod, getTradeArgumentNames, mergeTradingDayStatuses, normalizeScenarioArguments, syncLegacyResultFields, withCalculatedActualRisk } from "./utils";
 import type { AccountSettings, ArchivedPlan, DailyRiskBudget, FTMODailyState, FTMOSettings, LocalSessionSettings, CloudPayload, PlanningState, RiskControlState, ScenarioTrade, SessionPlan, StorageLoadResult, StorageSaveResult, TradeArgument } from "./types";
 
@@ -521,7 +521,7 @@ function normalizeFtmoSettings(settings?: Partial<FTMOSettings>, defaultSettings
   const migrated = migrateLegacyFtmoSettings(merged);
   return {
     ...migrated,
-    accountType: "FTMO 2-Step",
+    accountType: FTMO_ACCOUNT_TYPE,
     challengePhase: migrated.challengePhase === "Phase 2" || migrated.challengePhase === "Funded" ? migrated.challengePhase : "Phase 1",
     bestDayRuleEnabled: Boolean(migrated.bestDayRuleEnabled),
     hardBestDayRuleEnforcement: Boolean(migrated.hardBestDayRuleEnforcement),

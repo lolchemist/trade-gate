@@ -40,6 +40,7 @@ import { calculateFtmoRiskMetrics, getFtmoDailyState } from "@/lib/ftmoRisk";
 import { getNextValidTradingDate } from "@/lib/ftmoTime";
 import {
   formatPlanDate,
+  formatAccountModeLabel,
   formatSyncStatus,
   calculateActiveScenarioRisk,
   calculateScenarioTradeMath,
@@ -151,6 +152,7 @@ export default function TradeGateApp() {
   const activePlanDateLabel = formatPlanDate(activePlanDate);
   const nextPlanDate = getNextValidTradingDate(activePlanDate, localSessionSettings);
   const nextPlanDateLabel = formatPlanDate(nextPlanDate);
+  const accountModeLabel = formatAccountModeLabel(ftmoSettings.accountType, Number(ftmoSettings.accountSize) || Number(accountSettings.accountSize) || 0);
 
   useEffect(() => {
     if (!isHydrated || !ftmoClock) return;
@@ -537,7 +539,7 @@ export default function TradeGateApp() {
             </div>
             <div className="hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-right shadow-inner shadow-black/15 md:block">
               <div className="text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">Режим аккаунта</div>
-              <div className="mt-1 font-mono text-lg font-semibold text-neutral-100">Проп-челлендж $100K</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-neutral-100">{accountModeLabel}</div>
             </div>
           </div>
 

@@ -1,4 +1,5 @@
 import { Clock3, Landmark, ShieldCheck } from "lucide-react";
+import { FTMO_ACCOUNT_TYPE } from "./constants";
 import { NumberInput, SectionTitle } from "./form-controls";
 import { MetricTile, PanelHeader, ProgressMeter, StatusPill, TerminalPanel } from "./terminal-ui";
 import { formatCurrency } from "./utils";
@@ -32,7 +33,7 @@ export function FTMORiskCard({
 
   return (
     <TerminalPanel className="p-5" glow={dailyLossTone}>
-      <PanelHeader eyebrow="FTMO 2-Step" title="FTMO риск и reset" meta={<Landmark className="h-5 w-5 text-neutral-500" />} />
+      <PanelHeader eyebrow={FTMO_ACCOUNT_TYPE} title="FTMO риск и reset" meta={<Landmark className="h-5 w-5 text-neutral-500" />} />
 
       <div className="mt-4 flex flex-wrap gap-2">
         <StatusPill tone="cyan">FTMO day {ftmoTradingDay}</StatusPill>

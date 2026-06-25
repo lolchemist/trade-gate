@@ -1,4 +1,5 @@
 import { Settings2 } from "lucide-react";
+import { FTMO_ACCOUNT_TYPE } from "./constants";
 import { NumberInput, SelectInput, Toggle } from "./form-controls";
 import { PanelHeader, TerminalPanel } from "./terminal-ui";
 import type { FTMOChallengePhase, FTMOSettings, LocalSessionSettings } from "./types";
@@ -34,7 +35,7 @@ export function FTMOSettingsCard({
 
   return (
     <TerminalPanel className="p-5" glow="cyan">
-      <PanelHeader eyebrow="FTMO settings" title="FTMO 2-Step и локальная сессия" meta={<Settings2 className="h-5 w-5 text-neutral-500" />} />
+      <PanelHeader eyebrow="FTMO settings" title={`${FTMO_ACCOUNT_TYPE} и локальная сессия`} meta={<Settings2 className="h-5 w-5 text-neutral-500" />} />
 
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <SelectInput<FTMOChallengePhase> label="Фаза челленджа" value={ftmoSettings.challengePhase} setValue={(value) => onFtmoChange("challengePhase", value)} options={phaseOptions} />

@@ -1,4 +1,4 @@
-import { DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
+import { ACCOUNT_TYPE_LABELS, DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
 import type {
   ArchivedPlan,
@@ -77,6 +77,17 @@ export function formatPlanDate(isoDate: string) {
   const monthLabel = months[Number(month) - 1];
 
   return monthLabel ? `${Number(day)} ${monthLabel} ${year}` : isoDate;
+}
+
+export function formatCompactUsd(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "$0";
+  if (value >= 1_000_000) return `$${Number((value / 1_000_000).toFixed(1))}M`;
+  if (value >= 1_000) return `$${Number((value / 1_000).toFixed(1))}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+export function formatAccountModeLabel(accountType: keyof typeof ACCOUNT_TYPE_LABELS, accountSize: string | number) {
+  return `${ACCOUNT_TYPE_LABELS[accountType]} ${formatCompactUsd(Number(accountSize))}`;
 }
 
 export function createSessionPlan(planDate: string, symbol = DEFAULT_INSTRUMENT_SYMBOL, id = Date.now()): SessionPlan {

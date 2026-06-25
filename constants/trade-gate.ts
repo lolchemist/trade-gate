@@ -6,6 +6,14 @@ export const LOSS_LIMIT = -100;
 
 export const DEFAULT_DAILY_RISK_BUDGET = "100";
 
+export const DEFAULT_ACCOUNT_SIZE_USD = "10000";
+
+export const FTMO_ACCOUNT_TYPE = "FTMO 2-Step";
+
+export const ACCOUNT_TYPE_LABELS: Record<FTMOSettings["accountType"], string> = {
+  [FTMO_ACCOUNT_TYPE]: "Проп-челлендж",
+};
+
 export const MIN_SCENARIO_RR = 3;
 
 export const DEFAULT_PERSONAL_MAX_RISK_PER_TRADE = "50";
@@ -47,7 +55,7 @@ export const ENTRY_METHOD_OPTIONS = [
 ];
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
-  accountSize: "10000",
+  accountSize: DEFAULT_ACCOUNT_SIZE_USD,
   propDailyLossLimit: "500",
   personalDailyStop: "100",
   personalMaxRiskPerTrade: DEFAULT_PERSONAL_MAX_RISK_PER_TRADE,
@@ -57,9 +65,9 @@ export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
 };
 
 export const DEFAULT_FTMO_SETTINGS: FTMOSettings = {
-  accountType: "FTMO 2-Step",
+  accountType: FTMO_ACCOUNT_TYPE,
   challengePhase: "Phase 1",
-  accountSize: "10000",
+  accountSize: DEFAULT_ACCOUNT_SIZE_USD,
   ftmoTimezone: "Europe/Prague",
   ftmoResetTime: "00:00",
   maxDailyLossPercent: "5",
