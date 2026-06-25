@@ -57,7 +57,7 @@ export function HeroStatus(props: BaseHeroProps) {
 export function LoadingHero({ syncStatus }: { syncStatus: string }) {
   return (
     <motion.section
-      initial={{ opacity: 0, y: 18, scale: 0.99 }}
+      initial={false}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.04] p-6 shadow-xl shadow-black/20 backdrop-blur-2xl md:p-8"
@@ -75,29 +75,29 @@ export function LoadingHero({ syncStatus }: { syncStatus: string }) {
               <Loader2 className="h-6 w-6 animate-spin text-neutral-300" />
             </div>
             <div>
-              <div className="text-xs font-medium tracking-[0.08em] text-neutral-500">Проверка допуска</div>
-              <div className="mt-1 text-xs text-neutral-400">Загружаю торговое состояние…</div>
+              <div className="text-xs font-medium tracking-[0.08em] text-neutral-500">Допуск к сделке</div>
+              <div className="mt-1 text-xs text-neutral-400">Данные ещё загружаются</div>
             </div>
           </div>
-          <div className="mt-8 text-4xl font-semibold uppercase leading-[0.95] tracking-[-0.04em] text-neutral-100 md:text-6xl">
-            Проверяю состояние…
+          <div className="mt-8 text-4xl font-semibold leading-[0.98] tracking-[-0.04em] text-neutral-100 md:text-6xl">
+            Проверяю допуск
           </div>
           <div className="mt-6 max-w-3xl text-base font-medium leading-relaxed text-neutral-300 md:text-lg">
-            До завершения загрузки сохранённых данных торговля не разрешена.
+            Пока данные загружаются, торговля закрыта. Это защита от ложного разрешения на вход.
           </div>
           <div className="mt-2 max-w-2xl text-sm text-neutral-500">
-            Сначала читаю локальное состояние, затем проверяю Supabase. Ложный зелёный допуск здесь невозможен.
+            Сначала читаю локальное состояние, затем проверяю Supabase.
           </div>
         </div>
         <div className="grid content-end gap-3">
-          <HeroMetric label="Допуск" value="ПРОВЕРКА" tone="amber" />
-          <HeroMetric label="Макс. риск" value="$0" tone="amber" />
+          <HeroMetric label="Допуск" value="проверка" tone="amber" />
+          <HeroMetric label="Риск дня" value="—" tone="amber" />
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-relaxed text-neutral-300">
-            <div className="mb-1 flex items-center gap-2 text-[0.66rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-neutral-500">
               <Activity className="h-3.5 w-3.5" />
-              Статус загрузки
+              Статус
             </div>
-            {formatSyncStatus(syncStatus || "Loading local data")}
+            читаю данные · {formatSyncStatus(syncStatus || "Loading local data")}
           </div>
         </div>
       </div>
@@ -141,7 +141,7 @@ function TradingHeroBase({
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 18, scale: 0.99 }}
+      initial={false}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.45, ease: "easeOut" }}
       className={`relative overflow-hidden rounded-[2rem] border p-6 shadow-xl backdrop-blur-2xl md:p-8 ${toneClasses[tone].shell}`}

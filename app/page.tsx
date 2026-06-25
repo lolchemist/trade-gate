@@ -41,6 +41,7 @@ import { getNextValidTradingDate } from "@/lib/ftmoTime";
 import {
   formatPlanDate,
   formatAccountModeLabel,
+  formatCurrency,
   formatSyncStatus,
   calculateActiveScenarioRisk,
   calculateScenarioTradeMath,
@@ -71,6 +72,7 @@ import type {
   RiskControlState,
   ScenarioTrade,
   SessionPlan,
+  TodayMetrics,
   FTMODailyState,
   FTMOSettings,
   LocalSessionSettings,
@@ -363,9 +365,11 @@ export default function TradeGateApp() {
   };
 
   const activateScenario = (id: number) => {
+    const confirmed = window.confirm("Перевести сценарий в активную сделку? Фактический риск начнёт занимать дневной лимит.");
+    if (!confirmed) return;
     if (isTradingDayClosed) {
-      const confirmed = window.confirm("Торговый день закрыт. Переоткрыть его, чтобы активировать сделку?");
-      if (!confirmed) return;
+      const reopenConfirmed = window.confirm("Торговый день закрыт. Переоткрыть его, чтобы активировать сделку?");
+      if (!reopenConfirmed) return;
       dispatchPlanning({ type: "set-trading-day-status", planDate: activePlanDate, status: "active" });
     }
     dispatchPlanning({ type: "activate-plan", id });
@@ -471,6 +475,8 @@ export default function TradeGateApp() {
   };
 
   const closeScenario = (id: number) => {
+    const confirmed = window.confirm("Закрыть сделку внутри дня? После этого PnL и стопы сразу повлияют на допуск.");
+    if (!confirmed) return;
     dispatchPlanning({ type: "close-plan", id });
     setSyncStatus("Сделка закрыта внутри дня. Архив будет обновлён при закрытии торгового дня.");
   };
@@ -581,7 +587,7 @@ export default function TradeGateApp() {
         </motion.header>
 
         {activeTab === "today" && (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-7">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="space-y-7">
             {!isTradingStateReady ? (
               <LoadingHero syncStatus={syncStatus} />
             ) : (
@@ -601,6 +607,8 @@ export default function TradeGateApp() {
                   }}
                 />
                 {!isTradingDayClosed && <LockOverlay result={isLocked ? { ...riskResult, status: "LOCKED" } : riskResult} lockUntil={lockUntil} />}
+                <TodayRiskSnapshot metrics={todayMetrics} />
+                <ActiveTradesPanel plans={activeTradePlansForDate} />
 
                 <div className={`grid gap-6 xl:grid-cols-[1.08fr_0.92fr] ${isLocked && !isTradingDayClosed ? "opacity-85" : ""}`}>
                   <section className="space-y-4">
@@ -635,8 +643,8 @@ export default function TradeGateApp() {
                   <section className="space-y-4">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
-                        <div className="text-[0.64rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">Фокус</div>
-                        <h2 className="mt-1 text-xl font-semibold tracking-[-0.02em] text-neutral-100">Активные идеи и состояние</h2>
+                        <div className="text-[0.64rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">План</div>
+                        <h2 className="mt-1 text-xl font-semibold tracking-[-0.02em] text-neutral-100">Плановые сценарии и состояние</h2>
                       </div>
                       <Button onClick={() => setActiveTab("work")} variant="outline" className="rounded-xl border border-white/10 bg-white/[0.04] text-neutral-100 hover:bg-white/[0.08]">
                         Открыть работу
@@ -647,7 +655,6 @@ export default function TradeGateApp() {
                       <Rule title="Готовых" value={String(sessionPlanReadyCount)} />
                       <Rule title="Закрытых" value={String(closeDaySummary.closedCount)} />
                     </div>
-                    <ActiveTradesPanel plans={activeTradePlansForDate} />
                     {!isTradingDayClosed && <ScenarioReadinessSummary diagnostics={scenarioDiagnostics} />}
                     {!isTradingDayClosed && <BehavioralRiskPanel behavioralRisk={behavioralRisk} />}
                     {!isTradingDayClosed && (
@@ -1080,6 +1087,30 @@ export default function TradeGateApp() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function TodayRiskSnapshot({ metrics }: { metrics: TodayMetrics }) {
+  const remainingTone = metrics.remainingRisk <= 0 ? "border-rose-200/20 bg-rose-200/[0.06] text-rose-50" : "border-emerald-200/18 bg-emerald-200/[0.055] text-emerald-50";
+  const activeTone = metrics.activeRiskExposureUsed > 0 ? "border-amber-200/18 bg-amber-200/[0.055] text-amber-50" : "border-white/[0.07] bg-white/[0.035] text-neutral-100";
+  const pnlTone = metrics.realizedPnl < 0 ? "border-rose-200/18 bg-rose-200/[0.055] text-rose-50" : metrics.realizedPnl > 0 ? "border-emerald-200/18 bg-emerald-200/[0.055] text-emerald-50" : "border-white/[0.07] bg-white/[0.035] text-neutral-100";
+
+  return (
+    <section className="grid gap-3 sm:grid-cols-3">
+      <RiskSnapshotTile label="Остаток риска" value={formatCurrency(metrics.remainingRisk)} detail="доступно сейчас" className={remainingTone} />
+      <RiskSnapshotTile label="Активный риск" value={formatCurrency(metrics.activeRiskExposureUsed)} detail="открытые сделки" className={activeTone} />
+      <RiskSnapshotTile label="PnL дня" value={formatCurrency(metrics.realizedPnl)} detail="закрытый факт" className={pnlTone} />
+    </section>
+  );
+}
+
+function RiskSnapshotTile({ label, value, detail, className }: { label: string; value: string; detail: string; className: string }) {
+  return (
+    <div className={`min-w-0 rounded-[1.35rem] border p-4 shadow-inner shadow-black/10 ${className}`}>
+      <div className="text-sm font-medium text-neutral-400">{label}</div>
+      <div className="mt-2 break-words font-mono text-3xl font-semibold tabular-nums tracking-tight">{value}</div>
+      <div className="mt-1 text-xs text-neutral-500">{detail}</div>
     </div>
   );
 }

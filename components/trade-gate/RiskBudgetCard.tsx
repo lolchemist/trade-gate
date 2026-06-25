@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { WalletCards } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { NumberInput } from "./form-controls";
 import { formatCurrency } from "./utils";
 import { MetricTile, PanelHeader, ProgressMeter, TerminalPanel } from "./terminal-ui";
@@ -43,9 +45,7 @@ export function RiskBudgetCard({
         <MetricTile label="Открытый риск" value={formatCurrency(activeRiskExposureUsed)} tone={activeRiskExposureUsed > 0 ? "amber" : "neutral"} />
         <MetricTile label="Остаток" value={formatCurrency(remainingRisk)} tone={locked ? "red" : "emerald"} />
       </div>
-      <div className="mt-5">
-        <NumberInput label="Изменить бюджет, $" value={budgetUsd} setValue={onBudgetChange} />
-      </div>
+      <BudgetEditor key={budgetUsd} budgetUsd={budgetUsd} onBudgetChange={onBudgetChange} />
       {isClosedDay ? (
         <div className="mt-4 rounded-2xl border border-emerald-200/15 bg-emerald-200/[0.055] p-3 text-sm text-emerald-50">
           День завершён: риск больше не является допуском к новым сделкам, а остаётся частью разбора сессии.
@@ -61,5 +61,35 @@ export function RiskBudgetCard({
         </>
       )}
     </TerminalPanel>
+  );
+}
+
+function BudgetEditor({ budgetUsd, onBudgetChange }: { budgetUsd: string; onBudgetChange: (value: string) => void }) {
+  const [draftBudget, setDraftBudget] = useState(budgetUsd);
+  const draftChanged = draftBudget !== budgetUsd;
+
+  const saveBudget = () => {
+    if (!draftChanged) return;
+    const confirmed = window.confirm("Изменить дневной риск-бюджет? Это влияет на допуск к новым сделкам.");
+    if (!confirmed) {
+      setDraftBudget(budgetUsd);
+      return;
+    }
+    onBudgetChange(draftBudget);
+  };
+
+  return (
+    <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+      <NumberInput label="Дневной бюджет, $" value={draftBudget} setValue={setDraftBudget} />
+      <Button
+        type="button"
+        onClick={saveBudget}
+        disabled={!draftChanged}
+        variant="outline"
+        className="h-11 rounded-xl border border-white/10 bg-white/[0.04] text-neutral-100 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Сохранить бюджет
+      </Button>
+    </div>
   );
 }

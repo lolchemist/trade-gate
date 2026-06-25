@@ -24,7 +24,7 @@ export function ClosedDayHero({
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 12, scale: 0.995 }}
+      initial={false}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="relative overflow-hidden rounded-[2rem] border border-emerald-100/12 bg-[linear-gradient(145deg,rgba(24,36,32,0.72),rgba(14,15,17,0.88))] p-5 shadow-xl shadow-black/18 backdrop-blur-2xl md:p-7"
