@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Shield, Timer, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -113,6 +113,7 @@ export default function TradeGateApp() {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closeCarryIds, setCloseCarryIds] = useState<number[]>([]);
   const [closeCarryMode, setCloseCarryMode] = useState<CarryScenarioMode>("scenario_trade_plan");
+  const initialSessionDateAlignedRef = useRef(false);
 
   const {
     tradeArguments,
@@ -255,6 +256,18 @@ export default function TradeGateApp() {
   const totalLossUsed = todayMetrics.totalLossUsed;
   const profitProgress = todayMetrics.profitProgress;
   const propDailyLossClose = todayMetrics.propDailyLossClose;
+
+  useEffect(() => {
+    if (!isTradingStateReady || !ftmoClock || initialSessionDateAlignedRef.current) return;
+    initialSessionDateAlignedRef.current = true;
+
+    const currentLocalSessionDate = ftmoClock.localTradingSessionDate;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(currentLocalSessionDate)) return;
+    if (activePlanDate >= currentLocalSessionDate) return;
+
+    dispatchPlanning({ type: "set-active-date", activePlanDate: currentLocalSessionDate });
+    setSyncStatus(`Открыта текущая торговая сессия ${currentLocalSessionDate}`);
+  }, [activePlanDate, dispatchPlanning, ftmoClock, isTradingStateReady, setSyncStatus]);
 
   const bestValidScenario = useMemo(
     () =>
