@@ -1,9 +1,11 @@
 import { ACCOUNT_TYPE_LABELS, DEFAULT_DAILY_RISK_BUDGET, DEFAULT_ENTRY_METHODS, DEFAULT_PERSONAL_MAX_RISK_PER_TRADE, ENTRY_TYPE_LABELS, MIN_SCENARIO_RR } from "./constants";
 import { DEFAULT_INSTRUMENT_SYMBOL, getPointValuePerLot, normalizeInstrumentSymbol } from "@/constants/instrumentDefaults";
+import { calculateTradeEntryRisk, normalizeEntryParts } from "@/lib/trade-gate/risk";
 import type {
   ArchivedPlan,
   DailyRiskBudget,
   Direction,
+  EntryPart,
   EntryType,
   PermissionToTrade,
   RiskControlState,
@@ -150,6 +152,7 @@ export function createScenarioTrade(plan: SessionPlan, executionType: TradeExecu
     actualStop: plan.tradeStop,
     actualTake: plan.tradeTake,
     actualRisk: "",
+    entries: [],
     actualResult: "",
     actualRr: "",
     executionNotes: "",
@@ -360,8 +363,23 @@ export function calculateActiveScenarioRisk(plan: SessionPlan) {
   const activeTrade = getActiveScenarioTrade(plan);
   if (!activeTrade) return Math.max(0, Number(plan.tradeRisk) || 0);
 
-  const calculatedRisk = calculateScenarioExecutionRisk(plan, activeTrade).risk;
-  return Math.max(0, Number(activeTrade.actualRisk) || calculatedRisk || Number(plan.tradeRisk) || 0);
+  const calculatedRisk = calculateScenarioExecutionRisk(plan, activeTrade).potentialRisk;
+  return Math.max(0, calculatedRisk || Number(activeTrade.actualRisk) || Number(plan.tradeRisk) || 0);
+}
+
+export function calculateActiveScenarioCurrentRisk(plan: SessionPlan) {
+  if (plan.status !== "active") return 0;
+  const activeTrade = getActiveScenarioTrade(plan);
+  if (!activeTrade) return 0;
+  return calculateScenarioExecutionRisk(plan, activeTrade).currentRisk;
+}
+
+export function getScenarioTradeEntries(plan: SessionPlan, trade: ScenarioTrade): EntryPart[] {
+  return normalizeEntryParts({
+    entries: trade.entries,
+    legacyEntryPrice: trade.actualEntry,
+    legacyLot: Number(trade.actualSize) || calculateScenarioTradeMath(plan).lot,
+  }) as EntryPart[];
 }
 
 export function getActiveScenarioEntry(plan: SessionPlan) {
@@ -774,21 +792,39 @@ export function calculateScenarioTradeMath(item: SessionPlan) {
 }
 
 export function calculateScenarioExecutionRisk(item: SessionPlan, trade: ScenarioTrade) {
-  const entry = Number(trade.actualEntry);
   const stop = Number(trade.actualStop);
   const take = Number(trade.actualTake);
   const plannedLot = calculateScenarioTradeMath(item).lot;
-  const size = Number(trade.actualSize) || plannedLot;
   const pointValue = Number(item.tradePointValue);
-  const stopDistance = Math.abs(entry - stop);
-  const takeDistance = Math.abs(take - entry);
-  const risk = stopDistance > 0 && size > 0 && pointValue > 0 ? stopDistance * size * pointValue : 0;
-  const potential = takeDistance > 0 && size > 0 && pointValue > 0 ? takeDistance * size * pointValue : 0;
-  const rr = risk > 0 && potential > 0 ? potential / risk : 0;
-  const hasData = Boolean(trade.actualEntry && trade.actualStop && size > 0 && item.tradePointValue);
-  const hasTakeData = Boolean(trade.actualEntry && trade.actualTake && size > 0 && item.tradePointValue);
+  const exposure = calculateTradeEntryRisk({
+    entries: trade.entries,
+    legacyEntryPrice: trade.actualEntry,
+    legacyLot: Number(trade.actualSize) || plannedLot,
+    stopPrice: stop,
+    takePrice: take,
+    pointValuePerLot: pointValue,
+  });
+  const risk = exposure.potential.risk;
+  const potential = exposure.potential.potential;
+  const rr = exposure.potential.rr;
 
-  return { stopDistance, takeDistance, risk, potential, rr, hasData, hasTakeData };
+  return {
+    stopDistance: exposure.potential.stopDistance,
+    takeDistance: exposure.potential.takeDistance,
+    risk,
+    potential,
+    rr,
+    hasData: exposure.potential.hasData,
+    hasTakeData: exposure.potential.hasTakeData,
+    currentLot: exposure.current.lot,
+    currentAverageEntry: exposure.current.averageEntry,
+    currentRisk: exposure.current.risk,
+    potentialLot: exposure.potential.lot,
+    potentialAverageEntry: exposure.potential.averageEntry,
+    potentialRisk: exposure.potential.risk,
+    pendingCount: exposure.pendingEntries.length,
+    hasPendingRisk: exposure.hasPendingRisk,
+  };
 }
 
 export function withCalculatedActualRisk(item: SessionPlan, trade: ScenarioTrade): ScenarioTrade {

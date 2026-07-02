@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateConsecutiveStopCount, calculateDailyRiskUsage } from "../lib/trade-gate/risk.js";
+import { calculateConsecutiveStopCount, calculateDailyRiskUsage, calculateTradeEntryRisk } from "../lib/trade-gate/risk.js";
 
 test("remaining risk is full budget when no trades exist", () => {
   const result = calculateDailyRiskUsage({
@@ -75,6 +75,86 @@ test("manual loss does not count as a consecutive stop by default", () => {
   assert.equal(calculateConsecutiveStopCount(trades), 0);
 });
 
+test("multiple filled entries are one aggregated position", () => {
+  const result = calculateTradeEntryRisk({
+    entries: [
+      entry("filled", 70.654, 0.5),
+      entry("filled", 70.66, 0.5),
+    ],
+    stopPrice: 70.2,
+    takePrice: 72,
+    pointValuePerLot: 100,
+  });
+
+  assert.equal(result.current.lot, 1);
+  assert.equal(Number(result.current.averageEntry.toFixed(3)), 70.657);
+  assert.equal(Number(result.current.risk.toFixed(2)), 45.7);
+});
+
+test("pending entries increase potential risk but not current risk", () => {
+  const result = calculateTradeEntryRisk({
+    entries: [
+      entry("filled", 70.657, 1),
+      entry("pending", 70.3, 1),
+    ],
+    stopPrice: 70.2,
+    takePrice: 72,
+    pointValuePerLot: 100,
+  });
+
+  assert.equal(result.current.lot, 1);
+  assert.equal(result.potential.lot, 2);
+  assert.equal(Number(result.current.risk.toFixed(2)), 45.7);
+  assert.equal(Number(result.potential.averageEntry.toFixed(4)), 70.4785);
+  assert.equal(Number(result.potential.risk.toFixed(2)), 55.7);
+});
+
+test("planned entries do not reserve risk", () => {
+  const result = calculateTradeEntryRisk({
+    entries: [
+      entry("filled", 70.657, 1),
+      entry("planned", 70.3, 10),
+    ],
+    stopPrice: 70.2,
+    takePrice: 72,
+    pointValuePerLot: 100,
+  });
+
+  assert.equal(result.current.lot, 1);
+  assert.equal(result.potential.lot, 1);
+  assert.equal(Number(result.potential.risk.toFixed(2)), 45.7);
+});
+
+test("cancelled entries do not reserve risk", () => {
+  const result = calculateTradeEntryRisk({
+    entries: [
+      entry("filled", 70.657, 1),
+      entry("cancelled", 70.3, 10),
+    ],
+    stopPrice: 70.2,
+    takePrice: 72,
+    pointValuePerLot: 100,
+  });
+
+  assert.equal(result.current.lot, 1);
+  assert.equal(result.potential.lot, 1);
+  assert.equal(Number(result.potential.risk.toFixed(2)), 45.7);
+});
+
+test("legacy trade without entries is treated as one filled entry", () => {
+  const result = calculateTradeEntryRisk({
+    legacyEntryPrice: 70.657,
+    legacyLot: 1,
+    stopPrice: 70.2,
+    takePrice: 72,
+    pointValuePerLot: 100,
+  });
+
+  assert.equal(result.current.lot, 1);
+  assert.equal(result.potential.lot, 1);
+  assert.equal(Number(result.current.risk.toFixed(2)), 45.7);
+});
+
 function fact(status, executedAt, planId) {
   return {
     planId,
@@ -83,5 +163,15 @@ function fact(status, executedAt, planId) {
       status,
       executedAt,
     },
+  };
+}
+
+function entry(status, price, lot) {
+  return {
+    id: `${status}-${price}-${lot}`,
+    type: "market",
+    status,
+    price,
+    lot,
   };
 }

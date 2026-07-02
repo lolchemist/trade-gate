@@ -794,6 +794,7 @@ function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): 
       executionType: trade.executionType ?? (index === 0 ? "trade_1" : "re_entry"),
       status: trade.status ?? "planned",
       technical: trade.technical ?? plan.technical ?? "yes",
+      entries: normalizePersistedEntryParts(trade.entries),
     };
     return calculateExecutionRiskIfPossible(planForMath, normalizedTrade);
   });
@@ -816,6 +817,18 @@ function normalizeScenarioTrades(plan: SessionPlan, fallbackPlan: SessionPlan): 
   }
 
   return [];
+}
+
+function normalizePersistedEntryParts(entries: ScenarioTrade["entries"]): ScenarioTrade["entries"] {
+  if (!Array.isArray(entries)) return [];
+
+  return entries.map((entry, index) => ({
+    id: String(entry?.id || `entry-${index}`),
+    type: entry?.type === "limit" ? "limit" : "market",
+    status: entry?.status === "planned" || entry?.status === "pending" || entry?.status === "filled" || entry?.status === "cancelled" ? entry.status : "planned",
+    price: entry?.price ?? "",
+    lot: entry?.lot ?? "",
+  }));
 }
 
 function calculateExecutionRiskIfPossible(plan: SessionPlan, trade: ScenarioTrade): ScenarioTrade {

@@ -8,13 +8,16 @@ import { EntryMethodSelector } from "./EntryMethodSelector";
 import { NumberInput, Rule, SelectInput, TextInput } from "./form-controls";
 import { useExecutionQuality } from "@/hooks/trade-gate/useExecutionQuality";
 import { useScenarioDiagnostic } from "@/hooks/trade-gate/useScenarioDiagnostics";
-import { calculateActiveScenarioRisk, calculateScenarioExecutionRisk, calculateScenarioTradeMath, getActiveScenarioTrade, getPlanEntryMethod, getScenarioArguments, isPlanReady } from "./utils";
+import { calculateActiveScenarioCurrentRisk, calculateActiveScenarioRisk, calculateScenarioExecutionRisk, calculateScenarioTradeMath, getActiveScenarioTrade, getPlanEntryMethod, getScenarioArguments, getScenarioTradeEntries, isPlanReady } from "./utils";
 import { StatusPill } from "./terminal-ui";
 import type {
   CarryScenarioMode,
   Direction,
   EditablePlanField,
   EditableTradeField,
+  EntryPart,
+  EntryPartStatus,
+  EntryPartType,
   ResultStatus,
   ScenarioTrade,
   SelectOption,
@@ -43,6 +46,18 @@ const executionStatusOptions: SelectOption<TradeExecutionStatus>[] = [
   { value: "planned", label: "Запланирована" },
   { value: "executed", label: "Исполнена" },
   ...resultOptions,
+];
+
+const entryPartStatusOptions: SelectOption<EntryPartStatus>[] = [
+  { value: "planned", label: "План" },
+  { value: "pending", label: "Отложка стоит" },
+  { value: "filled", label: "Исполнен" },
+  { value: "cancelled", label: "Отменён" },
+];
+
+const entryPartTypeOptions: SelectOption<EntryPartType>[] = [
+  { value: "market", label: "Market" },
+  { value: "limit", label: "Limit" },
 ];
 
 const technicalOptions = Object.entries(TECHNICAL_STATUS_LABELS).map(([value, label]) => ({
@@ -104,6 +119,7 @@ export function ScenarioCard({
   const finalState = closed || cancelled || noEntry || item.status === "archived";
   const activeTrade = getActiveScenarioTrade(item);
   const activeRisk = calculateActiveScenarioRisk(item);
+  const activeCurrentRisk = calculateActiveScenarioCurrentRisk(item);
   const plannedRisk = Number(item.tradeRisk) || 0;
   const activeRiskIncreased = active && activeRisk > plannedRisk && plannedRisk > 0;
   const canClose = canCloseScenario(item);
@@ -306,14 +322,15 @@ export function ScenarioCard({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusPill tone="cyan">Активная сделка</StatusPill>
-                    <StatusPill tone={activeRiskIncreased ? "amber" : "emerald"}>Риск ${activeRisk.toFixed(2)}</StatusPill>
+                    <StatusPill tone={activeCurrentRisk > 0 ? "emerald" : "neutral"}>Текущий ${activeCurrentRisk.toFixed(2)}</StatusPill>
+                    <StatusPill tone={activeRiskIncreased ? "amber" : "cyan"}>С отложками ${activeRisk.toFixed(2)}</StatusPill>
                   </div>
                   <div className="mt-2 text-sm leading-relaxed text-neutral-400">
-                    Этот риск участвует в дневном лимите. Если переносишь стоп, обнови фактический стоп — остаток дневного риска пересчитается сразу.
+                    Filled-входы показывают текущий риск. Pending-отложки тоже резервируют дневной лимит, если реально стоят в терминале.
                   </div>
                   {activeRiskIncreased && (
                     <div className="mt-2 text-sm text-amber-100">
-                      Риск активной сделки выше планового на ${(activeRisk - plannedRisk).toFixed(2)}$.
+                      Полный риск идеи выше планового на ${(activeRisk - plannedRisk).toFixed(2)}$. Уменьши объём или сними отложку.
                     </div>
                   )}
                 </div>
@@ -505,6 +522,31 @@ function ExecutionTradeCard({
 }) {
   const title = trade.executionType === "trade_1" ? "Trade 1" : `Re-entry ${index}`;
   const executionQuality = useExecutionQuality({ scenario, trade });
+  const executionMath = calculateScenarioExecutionRisk(scenario, trade);
+  const entries = getScenarioTradeEntries(scenario, trade);
+  const explicitEntries = Array.isArray(trade.entries) ? trade.entries : [];
+  const usesExplicitEntries = explicitEntries.length > 0;
+  const plannedRisk = Number(scenario.tradeRisk) || 0;
+  const riskAbovePlan = plannedRisk > 0 && executionMath.potentialRisk > plannedRisk;
+  const setEntries = (nextEntries: EntryPart[]) => onUpdateTrade(scenarioId, trade.id, "entries", nextEntries);
+  const convertLegacyToEntries = () => {
+    const seededEntries = entries.length > 0 ? entries : [createEntryPart({ price: trade.actualEntry || scenario.tradeEntry, lot: trade.actualSize })];
+    setEntries(seededEntries);
+  };
+  const addEntry = () => {
+    if (scenario.status === "active" && usesExplicitEntries) {
+      const confirmed = window.confirm("Добавить часть входа к активной сделке? Это может увеличить общий риск позиции.");
+      if (!confirmed) return;
+    }
+    const nextEntry = createEntryPart({ price: trade.actualEntry || scenario.tradeEntry, lot: "" });
+    setEntries([...(usesExplicitEntries ? explicitEntries : entries), nextEntry]);
+  };
+  const updateEntry = (entryId: string, field: keyof EntryPart, value: EntryPart[keyof EntryPart]) => {
+    setEntries(explicitEntries.map((entry) => (entry.id === entryId ? { ...entry, [field]: value } : entry)));
+  };
+  const removeEntry = (entryId: string) => {
+    setEntries(explicitEntries.filter((entry) => entry.id !== entryId));
+  };
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
@@ -534,6 +576,65 @@ function ExecutionTradeCard({
         <NumberInput label="Финрезультат, $" value={trade.actualResult} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "actualResult", value)} />
       </div>
 
+      <details className="mt-3 rounded-2xl border border-white/[0.08] bg-black/20 p-3">
+        <summary className="cursor-pointer list-none text-sm font-medium text-neutral-200">
+          Состав входа · {executionMath.currentLot > 0 ? `${formatLot(executionMath.currentLot)} lot от ${formatPrice(executionMath.currentAverageEntry)}` : "нет filled-входов"}
+        </summary>
+        <div className="mt-3 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <EntryRiskTile label="Текущий риск" value={formatCurrencyInline(executionMath.currentRisk)} tone={executionMath.currentRisk > 0 ? "emerald" : "neutral"} />
+            <EntryRiskTile label="С отложками" value={formatCurrencyInline(executionMath.potentialRisk)} tone={riskAbovePlan ? "amber" : executionMath.hasPendingRisk ? "cyan" : "neutral"} />
+            <EntryRiskTile label="Текущий объём" value={`${formatLot(executionMath.currentLot)} lot`} />
+            <EntryRiskTile label="Полный объём" value={`${formatLot(executionMath.potentialLot)} lot`} />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-neutral-400">
+            Это одна общая позиция. Риск считается по суммарному объёму, чтобы нельзя было спрятать большой риск в нескольких маленьких ордерах.
+          </div>
+
+          {executionMath.hasPendingRisk && (
+            <div className="rounded-xl border border-amber-200/20 bg-amber-200/[0.07] px-3 py-2 text-sm text-amber-100">
+              Если все отложки сработают, риск будет {formatCurrencyInline(executionMath.potentialRisk)}.
+            </div>
+          )}
+
+          {riskAbovePlan && (
+            <div className="rounded-xl border border-amber-200/20 bg-amber-200/[0.07] px-3 py-2 text-sm text-amber-100">
+              Полный риск идеи превышает план. Уменьши объём или сними отложку.
+            </div>
+          )}
+
+          {!usesExplicitEntries ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+              <div className="text-sm text-neutral-400">
+                Сейчас сделка считается по legacy-полям: {entries.length > 0 ? entries.map(formatEntryPart).join(" · ") : "вход ещё не заполнен"}.
+              </div>
+              <Button type="button" onClick={convertLegacyToEntries} variant="outline" className="rounded-xl border border-white/10 bg-white/[0.04] text-neutral-100 hover:bg-white/[0.08]">
+                Разбить вход на части
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {explicitEntries.map((entry) => (
+                <div key={entry.id} className="grid gap-2 rounded-xl border border-white/10 bg-black/25 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end">
+                  <SelectInput label="Статус" value={entry.status} setValue={(value) => updateEntry(entry.id, "status", value)} options={entryPartStatusOptions} />
+                  <SelectInput label="Тип" value={entry.type} setValue={(value) => updateEntry(entry.id, "type", value)} options={entryPartTypeOptions} />
+                  <NumberInput label="Цена" value={entry.price} setValue={(value) => updateEntry(entry.id, "price", value)} />
+                  <NumberInput label="Лот" value={entry.lot} setValue={(value) => updateEntry(entry.id, "lot", value)} />
+                  <Button type="button" onClick={() => removeEntry(entry.id)} variant="outline" className="h-10 rounded-xl border border-rose-200/20 bg-rose-200/[0.06] text-rose-100 hover:bg-rose-200/[0.1]">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button type="button" onClick={addEntry} variant="outline" className="rounded-xl border border-emerald-200/20 bg-emerald-200/[0.07] text-emerald-100 hover:bg-emerald-200/[0.1]">
+                <Plus className="mr-2 h-4 w-4" />
+                Добавить часть входа
+              </Button>
+            </div>
+          )}
+        </div>
+      </details>
+
       <div className="mt-3 grid gap-3 md:grid-cols-4">
         <CalculatedExecutionMetric scenario={scenario} trade={trade} kind="rr" />
         <NumberInput label="Отклонение / slippage" value={trade.slippage} setValue={(value) => onUpdateTrade(scenarioId, trade.id, "slippage", value)} />
@@ -554,10 +655,10 @@ function ExecutionTradeCard({
 }
 
 function CalculatedExecutionMetric({ scenario, trade, kind }: { scenario: SessionPlan; trade: ScenarioTrade; kind: "risk" | "potential" | "rr" }) {
-  const { hasData, hasTakeData, potential, risk, rr } = calculateScenarioExecutionRisk(scenario, trade);
-  const displayRisk = Number(trade.actualRisk) || risk;
+  const { hasData, hasTakeData, potential, potentialRisk, rr } = calculateScenarioExecutionRisk(scenario, trade);
+  const displayRisk = potentialRisk;
   const displayRr = Number(trade.actualRr) || rr;
-  const label = kind === "risk" ? "Факт риск, $" : kind === "potential" ? "Ожидаемый тейк, $" : "Факт R:R";
+  const label = kind === "risk" ? "Риск с отложками, $" : kind === "potential" ? "Ожидаемый тейк, $" : "Факт R:R";
   const value =
     kind === "risk"
       ? displayRisk > 0
@@ -573,12 +674,12 @@ function CalculatedExecutionMetric({ scenario, trade, kind }: { scenario: Sessio
   const hint =
     kind === "risk"
       ? hasData
-        ? "Авто: вход × стоп × лот × пункт"
-        : "Заполни факт вход, стоп и размер"
+        ? "Filled + pending × стоп × пункт"
+        : "Заполни вход, стоп и лот"
       : kind === "potential"
         ? hasTakeData
-          ? "Авто: вход × тейк × лот × пункт"
-          : "Заполни факт вход, тейк и размер"
+          ? "Filled + pending × тейк × пункт"
+          : "Заполни вход, тейк и лот"
         : hasData && hasTakeData
           ? "Авто: тейк / риск"
           : "Нужны факт стоп и тейк";
@@ -592,6 +693,51 @@ function CalculatedExecutionMetric({ scenario, trade, kind }: { scenario: Sessio
       </div>
     </div>
   );
+}
+
+function EntryRiskTile({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "emerald" | "amber" | "cyan" | "neutral" }) {
+  const toneClass = tone === "emerald" ? "text-emerald-100" : tone === "amber" ? "text-amber-100" : tone === "cyan" ? "text-cyan-100" : "text-neutral-100";
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className={`mt-1 font-mono text-sm font-semibold ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function createEntryPart({ price, lot }: { price: string | number; lot: string | number }): EntryPart {
+  return {
+    id: `entry-${Date.now()}-${Math.round(Math.random() * 100000)}`,
+    type: "market",
+    status: "planned",
+    price,
+    lot,
+  };
+}
+
+function formatEntryPart(entry: EntryPart) {
+  return `${entryPartStatusLabel(entry.status)} ${formatLot(Number(entry.lot))} @ ${formatPrice(Number(entry.price))}`;
+}
+
+function entryPartStatusLabel(status: EntryPartStatus) {
+  if (status === "pending") return "pending";
+  if (status === "filled") return "filled";
+  if (status === "cancelled") return "cancelled";
+  return "planned";
+}
+
+function formatCurrencyInline(value: number) {
+  return Number.isFinite(value) && value > 0 ? `$${value.toFixed(2)}` : "—";
+}
+
+function formatLot(value: number) {
+  return Number.isFinite(value) && value > 0 ? value.toFixed(2) : "0.00";
+}
+
+function formatPrice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(3);
 }
 
 function MissingList({ title, items }: { title: string; items: string[] }) {

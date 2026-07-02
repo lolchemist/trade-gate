@@ -29,6 +29,10 @@ export type ScenarioLifecycleStatus = "planned" | "active" | "closed" | "cancell
 
 export type EntryType = "bounce" | "breakout" | "false_breakout" | "retest";
 
+export type EntryPartType = "market" | "limit";
+
+export type EntryPartStatus = "planned" | "pending" | "filled" | "cancelled";
+
 export type EditablePlanField = keyof SessionPlan;
 
 export type EditableTradeField = keyof ScenarioTrade;
@@ -103,12 +107,21 @@ export interface ScenarioTrade {
   actualStop: string;
   actualTake: string;
   actualRisk: string;
+  entries?: EntryPart[];
   actualResult: string;
   actualRr: string;
   executionNotes: string;
   executedAt: string;
   technical: TechnicalStatus;
   slippage: string;
+}
+
+export interface EntryPart {
+  id: string;
+  type: EntryPartType;
+  status: EntryPartStatus;
+  price: string | number;
+  lot: string | number;
 }
 
 export interface MarketIdea {

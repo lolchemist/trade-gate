@@ -43,11 +43,14 @@ import {
   formatAccountModeLabel,
   formatCurrency,
   formatSyncStatus,
+  calculateActiveScenarioCurrentRisk,
   calculateActiveScenarioRisk,
+  calculateScenarioExecutionRisk,
   calculateScenarioTradeMath,
   getDateISO,
   getActiveScenarioEntry,
   getActiveScenarioStop,
+  getActiveScenarioTrade,
   getBestValidScenario,
   getInstrumentImageKey,
   getMarketIdeaKey,
@@ -56,6 +59,7 @@ import {
   getRiskControlsForDate,
   getExecutedScenarioTrades,
   getScenarioTotalResult,
+  getScenarioTradeEntries,
   getScenarioTrades,
   isPlanReady,
   mergeTradingDayStatuses,
@@ -1135,9 +1139,16 @@ function ActiveTradesPanel({ plans }: { plans: SessionPlan[] }) {
       ) : (
         <div className="mt-4 space-y-2">
           {plans.map((plan) => {
-            const risk = calculateActiveScenarioRisk(plan);
-            const rr = calculateScenarioTradeMath(plan).rr;
-            const entry = getActiveScenarioEntry(plan);
+            const activeTrade = getActiveScenarioTrade(plan);
+            const exposure = activeTrade ? calculateScenarioExecutionRisk(plan, activeTrade) : null;
+            const currentRisk = calculateActiveScenarioCurrentRisk(plan);
+            const potentialRisk = calculateActiveScenarioRisk(plan);
+            const currentLot = exposure?.currentLot ?? 0;
+            const potentialLot = exposure?.potentialLot ?? currentLot;
+            const averageEntry = exposure?.currentAverageEntry ?? 0;
+            const potentialAverageEntry = exposure?.potentialAverageEntry ?? averageEntry;
+            const rr = exposure?.rr ?? calculateScenarioTradeMath(plan).rr;
+            const entries = activeTrade ? getScenarioTradeEntries(plan, activeTrade) : [];
             const stop = getActiveScenarioStop(plan);
 
             return (
@@ -1151,11 +1162,31 @@ function ActiveTradesPanel({ plans }: { plans: SessionPlan[] }) {
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-neutral-400">
-                  <span>Entry {entry || "—"}</span>
+                  <span>Сейчас {formatActiveLot(currentLot)} lot от {formatActivePrice(averageEntry || Number(getActiveScenarioEntry(plan)))}</span>
                   <span>SL {stop || "—"}</span>
-                  <span>Risk ${risk.toFixed(0)}</span>
+                  <span>Текущий риск ${currentRisk.toFixed(2)}</span>
+                  {potentialRisk > currentRisk && (
+                    <span>С отложками {formatActiveLot(potentialLot)} lot · ${potentialRisk.toFixed(2)}</span>
+                  )}
                   <span>RR {rr > 0 ? `1:${rr.toFixed(2)}` : "—"}</span>
                 </div>
+                {potentialRisk > currentRisk && (
+                  <div className="mt-2 rounded-xl border border-amber-200/15 bg-amber-200/[0.06] px-3 py-2 text-xs text-amber-100">
+                    Pending-отложки резервируют риск. Если все сработают, средняя цена будет {formatActivePrice(potentialAverageEntry)}.
+                  </div>
+                )}
+                {entries.length > 0 && (
+                  <details className="mt-2 text-sm text-neutral-400">
+                    <summary className="cursor-pointer text-neutral-300">Состав входа</summary>
+                    <div className="mt-2 space-y-1">
+                      {entries.map((entry) => (
+                        <div key={entry.id} className="rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2">
+                          {entry.status} · {formatActiveLot(Number(entry.lot))} lot @ {formatActivePrice(Number(entry.price))}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </div>
             );
           })}
@@ -1163,6 +1194,15 @@ function ActiveTradesPanel({ plans }: { plans: SessionPlan[] }) {
       )}
     </div>
   );
+}
+
+function formatActiveLot(value: number) {
+  return Number.isFinite(value) && value > 0 ? value.toFixed(2) : "0.00";
+}
+
+function formatActivePrice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(3);
 }
 
 function directionShortLabel(direction: SessionPlan["direction"]) {
